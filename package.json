@@ -1,0 +1,57 @@
+{
+  "name": "@simplytokenized/document-editor",
+  "version": "1.0.0",
+  "description": "Shared TipTap-based legal document editor with track changes, .docx import/export, PDF export and page layout — one implementation used by network manager and asset manager.",
+  "license": "UNLICENSED",
+  "private": true,
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:SimplyTokenized/document-editor.git"
+  },
+  "files": [
+    "src"
+  ],
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    },
+    "./extensions/*": {
+      "types": "./src/extensions/*.d.ts",
+      "default": "./src/extensions/*.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "peerDependencies": {
+    "@tiptap/core": "^3.28.0",
+    "@tiptap/extension-highlight": "^3.28.0",
+    "@tiptap/extension-image": "^3.28.0",
+    "@tiptap/extension-link": "^3.28.0",
+    "@tiptap/extension-placeholder": "^3.28.0",
+    "@tiptap/extension-strike": "^3.28.0",
+    "@tiptap/extension-table": "^3.28.0",
+    "@tiptap/extension-text-align": "^3.28.0",
+    "@tiptap/extension-text-style": "^3.28.0",
+    "@tiptap/extension-underline": "^3.28.0",
+    "@tiptap/pm": "^3.28.0",
+    "@tiptap/react": "^3.28.0",
+    "@tiptap/starter-kit": "^3.28.0",
+    "classnames": "^2.5.1",
+    "docx": "^9.7.1",
+    "jszip": "^3.10.1",
+    "prop-types": "^15.8.1",
+    "react": "^19.0.0",
+    "sass": "^1.97.0"
+  },
+  "peerDependenciesMeta": {
+    "docx": {
+      "optional": true
+    },
+    "sass": {
+      "optional": true
+    }
+  }
+}

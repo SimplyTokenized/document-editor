@@ -1,0 +1,1086 @@
+/*
+ * Contract editor styles — moved verbatim from the app's global stylesheet so the
+ * module carries its own look and is portable between apps. Colors reference CoreUI
+ * custom properties (--cui-*) with literal fallbacks, so they also render in apps that
+ * don't define those variables.
+ */
+// ---------------------------------------------------------------------------
+// Rich text editor (TipTap) — legal templates, compliance contracts, etc.
+// ---------------------------------------------------------------------------
+.rich-text-editor,
+.legal-template-editor {
+  border: 1px solid var(--cui-border-color-translucent, rgba(0,0,0,0.175));
+  border-radius: var(--cui-border-radius, 0.375rem);
+  background: var(--cui-body-bg, #fff);
+  overflow: hidden;
+
+  &__toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--cui-border-color, #dee2e6);
+    background: var(--cui-body-bg, #fff);
+  }
+
+  &__toolbar-group {
+    display: inline-flex;
+    align-items: stretch;
+    border: 1px solid var(--cui-border-color, #dee2e6);
+    border-radius: var(--cui-border-radius, 0.375rem);
+    overflow: hidden;
+  }
+
+  &__toolbar-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2.25rem;
+    min-height: 2rem;
+    padding: 0.25rem 0.5rem;
+    margin: 0;
+    border: 0;
+    border-right: 1px solid var(--cui-border-color, #dee2e6);
+    border-radius: 0;
+    background: var(--cui-body-bg, #fff);
+    color: var(--cui-body-color, #212529);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    line-height: 1.2;
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease;
+
+    &:last-child {
+      border-right: 0;
+    }
+
+    &:hover:not(:disabled) {
+      background: var(--cui-tertiary-bg, #f8f9fa);
+      color: var(--cui-body-color, #212529);
+    }
+
+    &:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    &--active {
+      background: var(--cui-primary, #5856d6);
+      color: #fff;
+
+      &:hover:not(:disabled) {
+        background: var(--cui-primary, #5856d6);
+        color: #fff;
+      }
+    }
+  }
+
+  .tiptap,
+  .ProseMirror {
+    min-height: 180px;
+    outline: 0;
+    padding: 0.75rem 1rem;
+    cursor: text;
+
+    &:focus {
+      outline: 0;
+    }
+
+    p {
+      margin-bottom: 0.5rem;
+    }
+
+    p:last-child {
+      margin-bottom: 0;
+    }
+
+    h1 {
+      font-size: 1.65rem;
+      font-weight: 600;
+      margin: 0.85rem 0 0.55rem;
+    }
+
+    h2 {
+      font-size: 1.35rem;
+      font-weight: 600;
+      margin: 0.75rem 0 0.5rem;
+    }
+
+    h3 {
+      font-size: 1.15rem;
+      font-weight: 600;
+      margin: 0.65rem 0 0.4rem;
+    }
+
+    ul,
+    ol {
+      margin: 0.5rem 0;
+      padding-left: 1.5rem;
+    }
+
+    blockquote {
+      margin: 0.75rem 0;
+      padding: 0.5rem 0 0.5rem 1rem;
+      border-left: 3px solid var(--cui-border-color, #dee2e6);
+      color: var(--cui-secondary-color, #6c757d);
+    }
+
+    code {
+      padding: 0.1rem 0.35rem;
+      border-radius: 0.25rem;
+      background: var(--cui-tertiary-bg, #f8f9fa);
+      font-size: 0.875em;
+    }
+
+    pre {
+      margin: 0.75rem 0;
+      padding: 0.75rem 1rem;
+      border-radius: var(--cui-border-radius, 0.375rem);
+      background: var(--cui-tertiary-bg, #f8f9fa);
+      overflow-x: auto;
+
+      code {
+        padding: 0;
+        background: transparent;
+      }
+    }
+
+    hr {
+      margin: 1rem 0;
+      border: 0;
+      border-top: 1px solid var(--cui-border-color, #dee2e6);
+    }
+
+    mark {
+      background: #fff3cd;
+      color: inherit;
+      padding: 0.05rem 0.15rem;
+      border-radius: 0.15rem;
+    }
+
+    img {
+      max-width: 100%;
+      height: auto;
+      border-radius: var(--cui-border-radius, 0.375rem);
+      margin: 0.5rem 0;
+    }
+
+    a {
+      color: var(--cui-primary, #5856d6);
+      text-decoration: underline;
+    }
+
+    strong {
+      font-weight: 600;
+    }
+  }
+
+  // Toolbar icon glyphs (CSS-only, matches common editor toolbars)
+  &__icon-list,
+  &__icon-olist,
+  &__icon-indent,
+  &__icon-outdent,
+  &__icon-image,
+  &__icon-link,
+  &__icon-comment,
+  &__icon-highlight,
+  &__icon-align-left,
+  &__icon-align-center,
+  &__icon-align-right,
+  &__icon-layout,
+  &__icon-table-props,
+  &__icon-undo,
+  &__icon-redo {
+    display: inline-block;
+    width: 1rem;
+    height: 1rem;
+    position: relative;
+  }
+
+  &__icon-layout::before {
+    content: '⚟';
+    font-size: 0.95rem;
+    line-height: 1;
+  }
+
+  &__icon-table-props::before {
+    content: '⊞⚙';
+    font-size: 0.7rem;
+    font-weight: 700;
+    line-height: 1.3;
+  }
+
+  &__icon-indent::before {
+    content: '→|';
+    font-size: 0.7rem;
+    font-weight: 700;
+    line-height: 1.3;
+  }
+
+  &__icon-outdent::before {
+    content: '|←';
+    font-size: 0.7rem;
+    font-weight: 700;
+    line-height: 1.3;
+  }
+
+  &__icon-list::before {
+    content: '≡';
+    font-size: 1rem;
+    line-height: 1;
+  }
+
+  &__icon-olist::before {
+    content: '1.';
+    font-size: 0.75rem;
+    font-weight: 700;
+    line-height: 1.3;
+  }
+
+  &__icon-image::before {
+    content: '';
+    display: block;
+    width: 0.9rem;
+    height: 0.7rem;
+    margin: 0.15rem auto 0;
+    border: 1.5px solid currentColor;
+    border-radius: 2px;
+    box-shadow: inset 0 -0.35rem 0 -0.15rem currentColor;
+  }
+
+  &__icon-link::before {
+    content: '⛓';
+    font-size: 0.8rem;
+    line-height: 1.2;
+  }
+
+  &__icon-comment::before {
+    content: '💬';
+    font-size: 0.85rem;
+    line-height: 1.2;
+  }
+
+  &__icon-highlight::before {
+    content: '◉';
+    font-size: 0.85rem;
+    line-height: 1.2;
+  }
+
+  &__icon-align-left::before {
+    content: '≡';
+    font-size: 1rem;
+    line-height: 1;
+    letter-spacing: -0.15em;
+  }
+
+  &__icon-align-center::before {
+    content: '≡';
+    font-size: 1rem;
+    line-height: 1;
+    text-align: center;
+    display: block;
+    transform: scaleX(0.85);
+  }
+
+  &__icon-align-right::before {
+    content: '≡';
+    font-size: 1rem;
+    line-height: 1;
+    display: block;
+    text-align: right;
+    transform: scaleX(0.85);
+  }
+
+  &__icon-undo::before {
+    content: '↶';
+    font-size: 1rem;
+    line-height: 1;
+  }
+
+  &__icon-redo::before {
+    content: '↷';
+    font-size: 1rem;
+    line-height: 1;
+  }
+
+  &__icon-table::before {
+    content: '⊞';
+    font-size: 1rem;
+    line-height: 1;
+  }
+
+  &__icon-col-before::before,
+  &__icon-col-after::before {
+    content: '⫶+';
+    font-size: 0.7rem;
+    font-weight: 700;
+    line-height: 1.3;
+  }
+
+  &__icon-col-delete::before {
+    content: '⫶−';
+    font-size: 0.7rem;
+    font-weight: 700;
+    line-height: 1.3;
+  }
+
+  &__icon-row-before::before,
+  &__icon-row-after::before {
+    content: '⁝+';
+    font-size: 0.7rem;
+    font-weight: 700;
+    line-height: 1.3;
+    display: inline-block;
+    transform: rotate(90deg);
+  }
+
+  &__icon-row-delete::before {
+    content: '⁝−';
+    font-size: 0.7rem;
+    font-weight: 700;
+    line-height: 1.3;
+    display: inline-block;
+    transform: rotate(90deg);
+  }
+
+  &__icon-table-delete::before {
+    content: '⊠';
+    font-size: 1rem;
+    line-height: 1;
+  }
+
+  .ProseMirror p.is-editor-empty:first-child::before {
+    color: var(--cui-secondary-color, #6c757d);
+    content: attr(data-placeholder);
+    float: left;
+    height: 0;
+    pointer-events: none;
+  }
+
+  &__content {
+    .tiptap {
+      outline: 0;
+    }
+  }
+
+  &__bubble-menu {
+    display: flex;
+    padding: 0.25rem;
+    border: 1px solid var(--cui-border-color, #dee2e6);
+    border-radius: var(--cui-border-radius, 0.375rem);
+    background: var(--cui-body-bg, #fff);
+    box-shadow: var(--cui-box-shadow, 0 0.5rem 1rem rgba(0,0,0,0.15));
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Legal contract template editor — document/paper look + automatic numbering.
+// Scoped to .legal-template-editor (the contract-authoring editor in
+// ContractForm) only, via descendant selectors on the actual rendered class
+// names — the Contract Review editor (.cre-doc) and the shared toolbar button
+// styles above are unaffected.
+// ---------------------------------------------------------------------------
+// The scroll container. The document paper AND the anchored comment margin both live inside
+// it, so the cards scroll together with the text and stay visible in fullscreen (where this
+// element becomes the flex-grow region).
+.legal-template-editor__scroll {
+  position: relative;
+  max-height: 68vh;
+  overflow-y: auto;
+  // Reserve the vertical scrollbar's width on BOTH sides so the centered paper stays truly
+  // centered — otherwise the scrollbar only eats the right side and equal left/right page
+  // margins look unequal on screen.
+  scrollbar-gutter: stable both-edges;
+
+  @media (max-width: 575.98px) {
+    max-height: 55vh;
+  }
+}
+
+.legal-template-editor .rich-text-editor__content {
+  background: var(--cui-tertiary-bg, #f8f9fa);
+  padding: 1.5rem 1rem;
+
+  @media (max-width: 575.98px) {
+    padding: 1rem 0.5rem;
+  }
+}
+
+// When comments are showing, the scroll container becomes a two-track grid: the document in a
+// flexible track (that can shrink) and the comment gutter in a fixed 320px track. Because the
+// gutter is a real column, it is always allocated space on-screen — it can never overlap the
+// paper or get pushed off the right edge by a wide table (the failure of an absolute overlay).
+// Both tracks share the one scroll container, so the cards still scroll with the text.
+.legal-template-editor--has-comments .legal-template-editor__scroll {
+  @media (min-width: 768px) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    column-gap: 1rem;
+  }
+}
+
+.legal-template-editor--has-comments .rich-text-editor__content {
+  min-width: 0; // allow the document track to shrink instead of forcing the grid wider
+}
+
+.legal-template-editor .tiptap,
+.legal-template-editor .ProseMirror {
+  // Width + padding fall back to the default A4-ish look, but are driven by the Page &
+  // layout tool (via CSS vars set on the editor root) so the on-screen paper reflects the
+  // real page size and margins ("distance") the author picks.
+  max-width: var(--legal-page-width, 820px);
+  margin: 0 auto;
+  // Zoom control scales the paper only (toolbar/comment margin stay put). `zoom` (not
+  // `transform: scale`) so it's a real layout change — the scroll container's scrollable
+  // height grows/shrinks with it instead of clipping or leaving dead space.
+  zoom: var(--legal-zoom, 1);
+  background: var(--cui-body-bg, #fff);
+  box-shadow:
+    0 1px 4px rgba(0, 0, 0, 0.08),
+    0 1px 2px rgba(0, 0, 0, 0.06);
+  border-radius: 4px;
+  padding: var(--legal-page-pad-top, 2.5rem) var(--legal-page-pad-right, 3rem)
+    var(--legal-page-pad-bottom, 2.5rem) var(--legal-page-pad-left, 3rem);
+  // Match the source document's body font (Arial) and a compact size close to its ~8pt,
+  // scaled up slightly for on-screen legibility. Was Georgia serif at browser default,
+  // which is what made it look nothing like the Word file.
+  font-family: Arial, Helvetica, 'Helvetica Neue', sans-serif;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  overflow-wrap: break-word; // long unbreakable tokens must wrap, not overflow the page
+
+  // The page padding IS the top/bottom margin, so drop the first/last block's own margin —
+  // otherwise a heading's default top margin sits on top of the padding and a "0mm top
+  // margin" still shows a gap. This makes the margin the author sets the true edge spacing.
+  > :first-child {
+    margin-top: 0;
+  }
+
+  > :last-child {
+    margin-bottom: 0;
+  }
+
+  @media (max-width: 767.98px) {
+    padding: 1.5rem 1.25rem;
+  }
+
+  // Automatic numbering, computed at render time from heading level and list
+  // nesting depth — always correct, never needs manual renumbering as sections
+  // are added, removed, or reordered. H1 is treated as the (single) document
+  // title and is intentionally left unnumbered; H2 are top-level sections
+  // ("1.", "2." …) and H3 are sub-sections ("1.1.", "1.2." …). Ordered lists
+  // nest the same way ("1.", "1.1.", "1.1.1." …) as clauses are indented.
+  counter-reset: legal-h2;
+
+  h2 {
+    counter-reset: legal-h3;
+    counter-increment: legal-h2;
+
+    &::before {
+      content: counter(legal-h2) '. ';
+    }
+  }
+
+  h3 {
+    counter-increment: legal-h3;
+
+    &::before {
+      content: counter(legal-h2) '.' counter(legal-h3) ' ';
+    }
+  }
+
+  ol {
+    counter-reset: legal-item;
+    list-style: none;
+    padding-left: 1.75rem;
+
+    > li {
+      position: relative;
+      counter-increment: legal-item;
+
+      &::before {
+        content: counters(legal-item, '.') '. ';
+        position: absolute;
+        left: -1.75rem;
+        min-width: 1.5rem;
+        font-weight: 600;
+      }
+    }
+  }
+
+  table {
+    // Default width for a table that has never had an explicit width set via the table-size
+    // tool. NOTE: this is a stylesheet fallback ONLY — once a table has per-column pixel
+    // widths (any imported table, any manually resized table, or any table sized via the
+    // tool), @tiptap/extension-table's own node view sets an inline `style="width:…"` on the
+    // <table> element from those column widths, and inline style always wins over this rule.
+    // That's intentional: the table-size tool controls width by rescaling those column
+    // widths (see legalTable.js), not via CSS, specifically because a CSS width can never
+    // override that inline style.
+    width: 100%;
+    // Safety net: an imported table's inline width is an ABSOLUTE px value captured from the
+    // source .docx's page — if the page is later made narrower (Page & layout tool), or the
+    // import measured differently than this on-screen printable width, that px width can
+    // exceed the paper's content box. `max-width` is never set inline by the node view, so
+    // (unlike `width`) it isn't overridden, and reliably prevents the table spilling past
+    // the page edge.
+    //
+    // NOTE this is still only a best-effort cap: per CSS2.1 §17.5.2.1, a fixed-layout table
+    // whose <colgroup> column widths (an unscaled import's raw per-column px, before the
+    // table-size tool has ever touched them) sum past max-width is rendered at the LARGER of
+    // the two — the table can still overflow the page in that case. Deliberately NOT wrapped
+    // in an `overflow-x: auto` scroller for that case: this editor is a WYSIWYG print preview,
+    // and a table that's genuinely too wide for the page should be visibly too wide (exactly
+    // as it would be in the exported .docx/PDF), not silently clipped behind a scrollbar the
+    // printed page doesn't have. The zoom control (DocumentActionsBar) is the intended way to
+    // see the whole page when that happens — it scales the paper (this table included), so an
+    // overflowing table shrinks right along with it instead of bleeding into the comment
+    // margin next to the page.
+    max-width: 100%;
+    // Cell padding / row height (below) ARE effective as CSS — cells have no custom node
+    // view, so they don't fight an inline style the way the <table> element does.
+    // Fixed layout so the table respects the page width and wraps long content instead of
+    // stretching past the paper edge (auto layout let the all-caps WARNHINWEIS run overflow).
+    table-layout: fixed;
+    border-collapse: collapse;
+    margin: 1rem 0;
+
+    th,
+    td {
+      border: 1px solid var(--cui-border-color, #dee2e6);
+      padding: var(--legal-doc-cell-pad-y, 0.28rem) var(--legal-doc-cell-pad-x, 0.4rem); // ≈ Word's compact cell inset
+      // Row height: with fixed layout, `height` on a cell acts as a minimum. `auto` (the
+      // default) leaves rows at their natural height.
+      height: var(--legal-doc-cell-min-h, auto);
+      vertical-align: top;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+
+    // Narrow "label" first column in the common two-column legal-sheet layout. Must target
+    // the <colgroup> col (which TipTap renders) — with table-layout:fixed the column widths
+    // come from <col>, not from cells, because the first row is a full-width colspan banner.
+    // A user-dragged column resize sets an inline width on the col, which overrides this.
+    colgroup col:first-child:not([style*='width']) {
+      width: 25%;
+    }
+
+    th {
+      background: var(--cui-tertiary-bg, #f8f9fa);
+      font-weight: 600;
+      text-align: left;
+    }
+
+    p {
+      margin-bottom: 0.35rem;
+
+      &:last-child {
+        margin-bottom: 0;
+      }
+    }
+  }
+}
+
+.legal-template-editor__doc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--cui-border-color, #dee2e6);
+  background: var(--cui-tertiary-bg, #f8f9fa);
+
+  .rich-text-editor__toolbar-btn {
+    width: auto;
+    min-width: auto;
+    gap: 0.3rem;
+    padding: 0.3rem 0.75rem;
+    border: 1px solid var(--cui-border-color, #dee2e6);
+    border-radius: var(--cui-border-radius, 0.375rem);
+  }
+}
+
+.legal-template-editor__doc-actions-spacer {
+  flex: 1 1 auto;
+}
+
+// Page & layout tool — a popover anchored to its toolbar button in the doc-actions bar.
+// Also reused by the contextual table-size popover in the formatting toolbar.
+.legal-template-editor__layout {
+  position: relative;
+
+  // Standalone trigger (not inside a bordered toolbar-group) — give it its own outline so
+  // it reads as a button in the main toolbar.
+  > .rich-text-editor__toolbar-btn {
+    border: 1px solid var(--cui-border-color, #dee2e6);
+    border-radius: var(--cui-border-radius, 0.375rem);
+  }
+
+  &-panel {
+    position: absolute;
+    top: calc(100% + 0.35rem);
+    right: 0;
+    z-index: 1085; // above the fullscreen layer (1080) so it works in fullscreen too
+    width: 20rem;
+    max-width: calc(100vw - 2rem);
+    max-height: 70vh;
+    overflow-y: auto;
+    padding: 0.85rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    border: 1px solid var(--cui-border-color, #dee2e6);
+    border-radius: var(--cui-border-radius, 0.375rem);
+    background: var(--cui-body-bg, #fff);
+    box-shadow: var(--cui-box-shadow, 0 0.5rem 1rem rgba(0, 0, 0, 0.15));
+  }
+
+  &-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+
+    & + & {
+      padding-top: 0.85rem;
+      border-top: 1px solid var(--cui-border-color, #dee2e6);
+    }
+  }
+
+  &-title {
+    margin: 0;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--cui-secondary-color, #6c757d);
+  }
+
+  &-row {
+    display: flex;
+    gap: 0.6rem;
+
+    > * {
+      flex: 1 1 0;
+      min-width: 0;
+    }
+  }
+
+  &-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    font-size: 0.78rem;
+  }
+
+  &-field-label {
+    color: var(--cui-body-color, #212529);
+  }
+
+  &-field-input {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+
+    input {
+      width: 100%;
+      min-width: 0;
+      padding: 0.25rem 0.4rem;
+      border: 1px solid var(--cui-border-color, #dee2e6);
+      border-radius: var(--cui-border-radius, 0.375rem);
+      background: var(--cui-body-bg, #fff);
+      color: var(--cui-body-color, #212529);
+      font-size: 0.8rem;
+    }
+  }
+
+  &-suffix {
+    flex: 0 0 auto;
+    font-size: 0.72rem;
+    color: var(--cui-secondary-color, #6c757d);
+  }
+
+  &-select {
+    padding: 0.25rem 0.4rem;
+    border: 1px solid var(--cui-border-color, #dee2e6);
+    border-radius: var(--cui-border-radius, 0.375rem);
+    background: var(--cui-body-bg, #fff);
+    color: var(--cui-body-color, #212529);
+    font-size: 0.8rem;
+  }
+
+  &-actions {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 0.6rem;
+    border-top: 1px solid var(--cui-border-color, #dee2e6);
+
+    .rich-text-editor__toolbar-btn {
+      width: auto;
+      min-width: auto;
+      padding: 0.3rem 0.75rem;
+      border: 1px solid var(--cui-border-color, #dee2e6);
+      border-radius: var(--cui-border-radius, 0.375rem);
+    }
+  }
+}
+
+.rich-text-editor__icon-fullscreen::before {
+  content: '⤢';
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.rich-text-editor__icon-zoom-in::before,
+.rich-text-editor__icon-zoom-out::before {
+  display: inline-block;
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.rich-text-editor__icon-zoom-in::before {
+  content: '+';
+}
+
+.rich-text-editor__icon-zoom-out::before {
+  content: '−';
+}
+
+.legal-template-editor__zoom-level {
+  min-width: 3rem;
+  font-variant-numeric: tabular-nums;
+}
+
+// Fullscreen: lift the whole editor over the app chrome for distraction-free editing.
+.legal-template-editor--fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 1080;
+  margin: 0;
+  border-radius: 0;
+  background: var(--cui-tertiary-bg, #f8f9fa);
+  display: flex;
+  flex-direction: column;
+
+  .legal-template-editor__scroll {
+    flex: 1 1 auto;
+    max-height: none;
+  }
+}
+
+// Page-break guides that read like Word's page view: at each printable-page interval the
+// paper shows a shaded "gutter" band (the space between two sheets) with a soft shadow at
+// the top of the next page. `--legal-page-height` is computed from the document's real page
+// size/margins in JS. NOTE: TipTap does not paginate, so these are visual guides — the REAL
+// page breaks are produced by Word / the PDF engine on export, which paginate for real.
+.legal-template-editor--page-guides .tiptap,
+.legal-template-editor--page-guides .ProseMirror {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent calc(var(--legal-page-height) - 14px),
+    rgba(0, 0, 0, 0.16) calc(var(--legal-page-height) - 14px),
+    var(--cui-tertiary-bg, #ebedef) calc(var(--legal-page-height) - 13px),
+    var(--cui-tertiary-bg, #ebedef) calc(var(--legal-page-height) - 1px),
+    rgba(0, 0, 0, 0.1) var(--legal-page-height),
+    transparent calc(var(--legal-page-height) + 2px)
+  );
+  background-attachment: local;
+}
+
+.legal-template-editor__wordcount {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.35rem 1rem;
+  font-size: 0.75rem;
+  color: var(--cui-secondary-color, #6c757d);
+  border-top: 1px solid var(--cui-border-color, #dee2e6);
+  background: var(--cui-body-bg, #fff);
+}
+
+// ---------------------------------------------------------------------------
+// In-editor comment margin — review cards anchored beside the text they annotate,
+// inside the scroll container so they scroll with the document and show in fullscreen.
+// ---------------------------------------------------------------------------
+.legal-template-editor__comment-margin {
+  // The fixed 320px second grid track (see --has-comments above). Relative so the cards,
+  // which are absolutely positioned and vertically anchored to their text by JS, resolve
+  // against this column — it can never overlap the paper or spill off-screen.
+  position: relative;
+  pointer-events: none; // empty gutter lets clicks fall through
+
+  // Below the grid breakpoint the scroll container is a single block, so drop the anchored
+  // absolute layout and let the cards stack as a normal list beneath the document.
+  @media (max-width: 767.98px) {
+    height: auto !important;
+    margin-top: 1rem;
+
+    .legal-comment-card {
+      position: static !important;
+      margin-bottom: 0.75rem;
+    }
+
+    .legal-comment-card__leader {
+      display: none;
+    }
+  }
+}
+
+// Flash used when a card is clicked to locate its text.
+.legal-anchor-flash {
+  animation: legal-anchor-flash 1.1s ease;
+}
+
+@keyframes legal-anchor-flash {
+  0%,
+  100% {
+    background-color: transparent;
+  }
+  25% {
+    background-color: rgba(88, 86, 214, 0.28);
+  }
+}
+
+.legal-comment-card {
+  position: absolute;
+  left: 0;
+  right: 0;
+  pointer-events: auto;
+  border: 1px solid var(--cui-border-color, #dee2e6);
+  border-left: 4px solid var(--cui-primary, #5856d6);
+  border-radius: var(--cui-border-radius, 0.375rem);
+  background: var(--cui-body-bg, #fff);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  font-size: 0.75rem;
+  // Positioned via inline `top` in JS; transition keeps re-stacking from jumping.
+  transition: top 0.12s ease, box-shadow 0.12s ease;
+  cursor: pointer;
+
+  &:hover {
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.14);
+  }
+
+  &--active {
+    box-shadow: 0 0 0 2px var(--cui-primary, #5856d6), 0 3px 10px rgba(0, 0, 0, 0.16);
+  }
+
+  // Thin leader connecting the card to the paper on its left.
+  &__leader {
+    position: absolute;
+    top: 14px;
+    left: -0.5rem;
+    width: 0.5rem;
+    height: 1px;
+    background: var(--cui-border-color, #dee2e6);
+  }
+
+  &__head {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 0.5rem;
+    border-bottom: 1px solid var(--cui-border-color, #dee2e6);
+    border-radius: calc(var(--cui-border-radius, 0.375rem) - 1px)
+      calc(var(--cui-border-radius, 0.375rem) - 1px) 0 0;
+  }
+
+  &__avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.35rem;
+    height: 1.35rem;
+    border-radius: 50%;
+    font-size: 0.65rem;
+    font-weight: 700;
+    flex: 0 0 auto;
+  }
+
+  &__author {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-weight: 600;
+    color: var(--cui-body-color, #212529);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  &__role {
+    font-weight: 400;
+    color: var(--cui-secondary-color, #6c757d);
+  }
+
+  &__flag {
+    flex: 0 0 auto;
+    padding: 0.05rem 0.35rem;
+    border-radius: 999px;
+    background: #fff3cd;
+    color: #915907;
+    font-size: 0.62rem;
+    font-weight: 700;
+  }
+
+  &__actions {
+    display: inline-flex;
+    gap: 0.25rem;
+    flex: 0 0 auto;
+  }
+
+  &__body {
+    padding: 0.45rem 0.55rem 0.55rem;
+  }
+
+  &__text {
+    line-height: 1.35;
+    word-break: break-word;
+    margin-bottom: 0.25rem;
+
+    &--removed {
+      color: #d6332e;
+      text-decoration: line-through;
+    }
+
+    &--added {
+      color: hsl(142 70% 30%);
+    }
+
+    &--quote {
+      color: var(--cui-body-color, #212529);
+    }
+  }
+
+  &__reason {
+    margin: 0.35rem 0;
+    padding: 0.3rem 0.4rem;
+    border: 1px solid #f2d492;
+    border-radius: 0.25rem;
+    background: #fff8e6;
+    color: #915907;
+    font-size: 0.68rem;
+    line-height: 1.3;
+  }
+
+  // Buttons
+  &__btn {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.1rem 0.4rem;
+    border: 0;
+    border-radius: 0.25rem;
+    background: transparent;
+    font-size: 0.68rem;
+    font-weight: 600;
+    line-height: 1.5;
+    cursor: pointer;
+
+    &--accept {
+      color: hsl(142 70% 30%);
+      &:hover {
+        background: hsl(142 76% 92%);
+      }
+    }
+
+    &--reject {
+      color: hsl(0 72% 45%);
+      &:hover {
+        background: hsl(0 76% 95%);
+      }
+    }
+
+    &--primary {
+      background: var(--cui-primary, #5856d6);
+      color: #fff;
+      padding: 0.2rem 0.55rem;
+      &:hover {
+        background: var(--cui-primary, #5856d6);
+        opacity: 0.9;
+      }
+    }
+  }
+
+  &__link {
+    padding: 0.1rem 0.15rem;
+    border: 0;
+    background: transparent;
+    color: var(--cui-primary, #5856d6);
+    font-size: 0.68rem;
+    font-weight: 600;
+    cursor: pointer;
+
+    &:hover {
+      text-decoration: underline;
+    }
+
+    &--muted {
+      color: var(--cui-secondary-color, #6c757d);
+    }
+  }
+
+  // Thread
+  &__thread {
+    margin-top: 0.35rem;
+    border-top: 1px dashed var(--cui-border-color, #dee2e6);
+    padding-top: 0.35rem;
+  }
+
+  &__badge {
+    display: inline-block;
+    margin-bottom: 0.3rem;
+    padding: 0.05rem 0.35rem;
+    border-radius: 999px;
+    background: var(--cui-tertiary-bg, #f1f1f4);
+    color: var(--cui-secondary-color, #6c757d);
+    font-size: 0.62rem;
+    font-weight: 700;
+  }
+
+  &__entry {
+    margin-bottom: 0.35rem;
+  }
+
+  &__entry-author {
+    font-size: 0.64rem;
+    font-weight: 700;
+    color: var(--cui-secondary-color, #6c757d);
+  }
+
+  &__entry-text {
+    line-height: 1.35;
+    color: var(--cui-body-color, #212529);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  &__thread-actions,
+  &__composer-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.4rem;
+    align-items: center;
+  }
+
+  &__composer {
+    margin-top: 0.3rem;
+  }
+
+  &__textarea {
+    width: 100%;
+    min-height: 3.5rem;
+    padding: 0.35rem 0.45rem;
+    border: 1px solid var(--cui-border-color, #dee2e6);
+    border-radius: 0.25rem;
+    background: var(--cui-body-bg, #fff);
+    color: var(--cui-body-color, #212529);
+    font-size: 0.72rem;
+    font-family: inherit;
+    resize: vertical;
+    margin-bottom: 0.35rem;
+
+    &:focus {
+      outline: 0;
+      border-color: var(--cui-primary, #5856d6);
+    }
+  }
+}

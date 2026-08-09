@@ -1,0 +1,211 @@
+/* Preserve visible height for intentional blank lines */
+.rich-text-editor .ProseMirror p:empty::before,
+.cre-doc .ProseMirror p:empty::before {
+  content: '\00a0';
+  pointer-events: none;
+}
+
+
+.cre-doc .ProseMirror .legal-insertion,
+.cre-doc .ProseMirror ins.legal-insertion {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.cre-doc .ProseMirror .legal-insertion[data-author-color='0'],
+.cre-doc .ProseMirror ins.legal-insertion[data-author-color='0'] {
+  color: hsl(142 76% 36%);
+}
+.cre-doc .ProseMirror .legal-insertion[data-author-color='1'],
+.cre-doc .ProseMirror ins.legal-insertion[data-author-color='1'] {
+  color: hsl(217 91% 45%);
+}
+.cre-doc .ProseMirror .legal-insertion[data-author-color='2'],
+.cre-doc .ProseMirror ins.legal-insertion[data-author-color='2'] {
+  color: hsl(25 95% 47%);
+}
+.cre-doc .ProseMirror .legal-insertion[data-author-color='3'],
+.cre-doc .ProseMirror ins.legal-insertion[data-author-color='3'] {
+  color: hsl(262 83% 52%);
+}
+.cre-doc .ProseMirror .legal-insertion[data-author-color='4'],
+.cre-doc .ProseMirror ins.legal-insertion[data-author-color='4'] {
+  color: hsl(196 89% 44%);
+}
+.cre-doc .ProseMirror .legal-insertion[data-author-color='5'],
+.cre-doc .ProseMirror ins.legal-insertion[data-author-color='5'] {
+  color: hsl(173 80% 40%);
+}
+
+.cre-doc .ProseMirror .legal-deletion,
+.cre-doc .ProseMirror del.legal-deletion {
+  text-decoration: line-through;
+}
+.cre-doc .ProseMirror .legal-deletion[data-author-color='0'],
+.cre-doc .ProseMirror del.legal-deletion[data-author-color='0'] {
+  color: hsl(142 76% 36%);
+}
+.cre-doc .ProseMirror .legal-deletion[data-author-color='1'],
+.cre-doc .ProseMirror del.legal-deletion[data-author-color='1'] {
+  color: hsl(217 91% 45%);
+}
+.cre-doc .ProseMirror .legal-deletion[data-author-color='2'],
+.cre-doc .ProseMirror del.legal-deletion[data-author-color='2'] {
+  color: hsl(25 95% 47%);
+}
+.cre-doc .ProseMirror .legal-deletion[data-author-color='3'],
+.cre-doc .ProseMirror del.legal-deletion[data-author-color='3'] {
+  color: hsl(262 83% 52%);
+}
+.cre-doc .ProseMirror .legal-deletion[data-author-color='4'],
+.cre-doc .ProseMirror del.legal-deletion[data-author-color='4'] {
+  color: hsl(196 89% 44%);
+}
+.cre-doc .ProseMirror .legal-deletion[data-author-color='5'],
+.cre-doc .ProseMirror del.legal-deletion[data-author-color='5'] {
+  color: hsl(173 80% 40%);
+}
+
+/* Shared ContractEditor (module) editor — the .cre-doc rules above are scoped to the network
+   manager's review editor, so redline coloring is repeated here for the module's ProseMirror
+   (.legal-template-editor / .rich-text-editor__prose). Insertions underline in blue;
+   deletions strike through in RED so removed text reads unmistakably as removed. */
+.legal-template-editor .ProseMirror .legal-insertion,
+.legal-template-editor .ProseMirror ins.legal-insertion {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  color: hsl(217 91% 45%);
+}
+.legal-template-editor .ProseMirror .legal-deletion,
+.legal-template-editor .ProseMirror del.legal-deletion {
+  text-decoration: line-through;
+  color: #d6332e;
+}
+.legal-template-editor .ProseMirror .legal-comment,
+.legal-template-editor .ProseMirror span.legal-comment {
+  background: rgba(245, 158, 11, 0.14);
+  border-bottom: 1px dashed #d9920b;
+}
+
+.cre-doc .ProseMirror [data-block-inserted] {
+  border-left: 3px solid currentColor;
+  padding-left: 0.6rem;
+  border-radius: 2px;
+}
+.cre-doc .ProseMirror [data-block-inserted][data-author-color='0'] {
+  border-left-color: hsl(142 76% 36%);
+  background-color: hsl(142 76% 36% / 0.06);
+}
+.cre-doc .ProseMirror [data-block-inserted][data-author-color='1'] {
+  border-left-color: hsl(217 91% 45%);
+  background-color: hsl(217 91% 45% / 0.06);
+}
+
+.cre-doc .ProseMirror ul,
+.cre-doc .ProseMirror ol {
+  padding-left: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.cre-doc .ProseMirror img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.25rem;
+}
+
+/* Preview pane — match editor image sizing/alignment from saved HTML */
+.cre-doc--preview img {
+  border-radius: 0.25rem;
+  margin: 0.5rem 0;
+}
+
+.cre-doc--preview img:not([style]) {
+  max-width: 100%;
+  height: auto;
+}
+
+.cre-doc--preview img[data-align='center']:not([style]) {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.cre-doc--preview img[data-align='right']:not([style]) {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin-left: auto;
+  margin-right: 0;
+}
+
+.cre-doc--preview img[data-align='left']:not([style]) {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin-left: 0;
+  margin-right: auto;
+}
+
+/* TipTap image resize handles (ResizableNodeView) — review + template editors */
+.cre-doc [data-resize-wrapper],
+.rich-text-editor [data-resize-wrapper] {
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: bottom;
+  line-height: 0;
+}
+
+.cre-doc [data-resize-wrapper] img,
+.rich-text-editor [data-resize-wrapper] img {
+  margin: 0;
+  display: block;
+}
+
+.cre-doc [data-resize-handle],
+.rich-text-editor [data-resize-handle] {
+  width: 10px;
+  height: 10px;
+  background: var(--cui-body-bg, #fff);
+  border: 2px solid var(--cui-primary, #321fdb);
+  border-radius: 2px;
+  z-index: 10;
+  pointer-events: auto;
+}
+
+.cre-doc [data-resize-handle='top-left'],
+.cre-doc [data-resize-handle='bottom-right'],
+.rich-text-editor [data-resize-handle='top-left'],
+.rich-text-editor [data-resize-handle='bottom-right'] {
+  cursor: nwse-resize;
+}
+
+.cre-doc [data-resize-handle='top-right'],
+.cre-doc [data-resize-handle='bottom-left'],
+.rich-text-editor [data-resize-handle='top-right'],
+.rich-text-editor [data-resize-handle='bottom-left'] {
+  cursor: nesw-resize;
+}
+
+.cre-doc .ProseMirror-selectednode [data-resize-wrapper],
+.rich-text-editor .ProseMirror-selectednode [data-resize-wrapper] {
+  outline: 2px solid color-mix(in srgb, var(--cui-primary, #321fdb) 45%, transparent);
+  border-radius: 0.25rem;
+}
+
+/* Framework-neutral spinner used by ContractEditor (replaces the host UI-kit spinner) */
+.contract-editor__spinner {
+  display: inline-block;
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  opacity: 0.6;
+  animation: contract-editor-spin 0.7s linear infinite;
+}
+@keyframes contract-editor-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
