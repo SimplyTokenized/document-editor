@@ -819,6 +819,7 @@ const DocumentActionsBar = ({
   onContentReplaced,
   toolbarExtras,
   titleSlot,
+  onExportPdf,
 }) => {
   const fileInputRef = useRef(null)
   const [isImporting, setIsImporting] = useState(false)
@@ -929,7 +930,12 @@ const DocumentActionsBar = ({
             {labels.exportDocxTracked}
           </ToolbarMenuItem>
         ) : null}
-        <ToolbarMenuItem onClick={handleExportPdf}>{labels.exportPdf}</ToolbarMenuItem>
+        {/* A host that renders PDFs server-side passes onExportPdf so export and the
+            published file come from ONE renderer; otherwise this falls back to the
+            built-in browser-print export, which keeps the module usable standalone. */}
+        <ToolbarMenuItem onClick={onExportPdf || handleExportPdf}>
+          {labels.exportPdf}
+        </ToolbarMenuItem>
       </ToolbarMenu>
       {titleSlot ? (
         // Optional inline document title, right after File. Optional because it only makes
@@ -1017,6 +1023,7 @@ DocumentActionsBar.propTypes = {
   onContentReplaced: PropTypes.func,
   toolbarExtras: PropTypes.node,
   titleSlot: PropTypes.node,
+  onExportPdf: PropTypes.func,
 }
 
 const TipTapEditor = ({
@@ -1039,6 +1046,7 @@ const TipTapEditor = ({
   toolbarExtras,
   insertExtras,
   titleSlot,
+  onExportPdf,
 }) => {
   const labels = { ...DEFAULT_LABELS, ...labelsProp }
   const lastEmittedHtmlRef = useRef(content ?? '')
@@ -1288,6 +1296,7 @@ const TipTapEditor = ({
           onContentReplaced={scheduleAutoFitZoom}
           toolbarExtras={toolbarExtras}
           titleSlot={titleSlot}
+          onExportPdf={onExportPdf}
         />
       ) : toolbarExtras || titleSlot ? (
         // Read-only still shows the host's own controls — a reader needs version history and
@@ -1394,6 +1403,9 @@ TipTapEditor.propTypes = {
   insertExtras: PropTypes.node,
   // Optional inline document title shown in the actions bar, after the File menu.
   titleSlot: PropTypes.node,
+  // Replaces the built-in browser-print PDF export. Pass this when the host renders PDFs
+  // itself (e.g. server-side) so export matches the document it actually distributes.
+  onExportPdf: PropTypes.func,
 }
 
 export default TipTapEditor

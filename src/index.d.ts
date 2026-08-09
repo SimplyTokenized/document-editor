@@ -61,6 +61,12 @@ export interface ContractEditorProps {
    * own title input. Pass JSX.
    */
   titleSlot?: unknown
+  /**
+   * Replaces the built-in browser-print PDF export. Pass this when the host renders PDFs
+   * itself (e.g. server-side) so what the author exports is the same document the system
+   * distributes, rather than a second renderer's approximation of it.
+   */
+  onExportPdf?: () => void
 }
 
 /**
