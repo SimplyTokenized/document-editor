@@ -938,33 +938,35 @@ const DocumentActionsBar = ({
         // and simply passes nothing.
         <div className="legal-template-editor__title-slot">{titleSlot}</div>
       ) : null}
-      {/* View controls: one group of icon-only toggles. They earn a permanent spot (used
-          throughout a session) but not the width their labels used to take. */}
-      <div className="rich-text-editor__toolbar-group">
-        <PageLayoutPanel labels={labels} pageSetup={pageSetup} onPageSetup={onPageSetup} />
-        {/* Keeps its label while its neighbours are icon-only: it is the one STATE toggle
-            in this group (the others open a popover / switch a mode), and an icon alone
-            gives no clue whether guides are on, off, or what "guides" even means. */}
-        <ToolbarButton
-          title={labels.pageGuidesHint}
-          active={pageGuides}
-          onClick={onTogglePageGuides}
-        >
-          <span className="rich-text-editor__icon-page-guides" aria-hidden="true" />
-          {labels.pageGuides}
-        </ToolbarButton>
-        <ToolbarButton
-          title={isFullscreen ? labels.exitFullscreen : labels.enterFullscreen}
-          active={isFullscreen}
-          onClick={onToggleFullscreen}
-        >
-          <span className="rich-text-editor__icon-fullscreen" aria-hidden="true" />
-        </ToolbarButton>
-      </div>
       <div className="legal-template-editor__doc-actions-spacer" />
       {toolbarExtras ? (
         <div className="legal-template-editor__toolbar-extras">{toolbarExtras}</div>
       ) : null}
+      {/* Everything from here right is one "view" cluster — controls that change how the
+          document is DISPLAYED (page geometry, page-break guides, fullscreen, zoom), in
+          escalating scope. Keeping them adjacent is what makes the bar read as zones:
+          document identity on the left, host workflow in the middle, view at the end —
+          instead of view controls scattered through the bar. */}
+      <ToolbarButton
+        title={isFullscreen ? labels.exitFullscreen : labels.enterFullscreen}
+        active={isFullscreen}
+        onClick={onToggleFullscreen}
+      >
+        <span className="rich-text-editor__icon-fullscreen" aria-hidden="true" />
+      </ToolbarButton>
+      {/* Page & layout is deliberately NOT inside a bordered toolbar-group: the group's
+          `overflow: hidden` (which clips its children's corners) would also clip the
+          popover this trigger opens — the panel renders but is invisible. */}
+      <PageLayoutPanel labels={labels} pageSetup={pageSetup} onPageSetup={onPageSetup} />
+      {/* Icon-only, like its neighbours — the active highlight carries the on/off state
+          and the tooltip carries the name and the "shorter than one page" caveat. */}
+      <ToolbarButton
+        title={labels.pageGuidesHint}
+        active={pageGuides}
+        onClick={onTogglePageGuides}
+      >
+        <span className="rich-text-editor__icon-page-guides" aria-hidden="true" />
+      </ToolbarButton>
       <div className="rich-text-editor__toolbar-group legal-template-editor__zoom">
         <ToolbarButton
           title={labels.zoomOut}

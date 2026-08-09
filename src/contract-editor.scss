@@ -680,6 +680,152 @@
   gap: 0.35rem;
 }
 
+// Segmented control — a MODE choice between two views (edit vs preview), with a raised
+// thumb that slides to the chosen side. Exposed as part of the module's styling so host
+// controls handed to the slots read as one integrated control rather than two adjacent
+// buttons. For a boolean on/off state use __pill-toggle below instead — a mode choice and
+// a state switch are different controls and should not look alike.
+//
+// The thumb is a separate absolutely-positioned element rather than a background on the
+// active button, because only a real element can animate its position — swapping a
+// background between two buttons cuts, it doesn't slide.
+.legal-template-editor__segmented {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+  padding: 3px;
+  border: 1px solid var(--doc-editor-border);
+  // Pill geometry: rounder than the square-ish toolbar buttons around it, which is what
+  // makes it read as a toggle rather than two more buttons.
+  border-radius: 999px;
+  // A step darker than the plain muted surface so the well the thumb sits in is visible
+  // on the muted actions bar behind it.
+  background: color-mix(in srgb, var(--doc-editor-fg) 6%, var(--doc-editor-bg-muted));
+
+  // Two equal halves, so the 50% thumb aligns with whichever side is active regardless of
+  // label length.
+  &--two > button {
+    flex: 1 1 0;
+  }
+
+  &__thumb {
+    position: absolute;
+    top: 3px;
+    bottom: 3px;
+    left: 3px;
+    width: calc(50% - 3px);
+    border-radius: 999px;
+    background: var(--doc-editor-bg);
+    // Lift + hairline: the thumb must survive on a barely-darker track in light mode and
+    // not glow in dark mode, so a soft drop shadow plus a faint keyline.
+    box-shadow:
+      0 1px 3px rgba(0, 0, 0, 0.16),
+      0 0 0 1px rgba(0, 0, 0, 0.04);
+    transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+    pointer-events: none;
+  }
+
+  &--end &__thumb {
+    transform: translateX(100%);
+  }
+
+  // Sits above the thumb so the label stays readable while it slides underneath.
+  > button {
+    position: relative;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    min-height: 1.65rem;
+    padding: 0.2rem 0.8rem;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--doc-editor-fg-muted);
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    line-height: 1.2;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: color 0.2s ease;
+
+    &[aria-pressed='true'],
+    &[aria-checked='true'] {
+      color: var(--doc-editor-fg);
+      font-weight: 600;
+    }
+
+    &:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+  }
+}
+
+// Labeled switch-pill — a boolean STATE (comments shown / hidden) as one button: label plus
+// a miniature switch whose knob slides and whose track takes the brand colour when on.
+// One control, one click target, and the on/off state is legible at a glance without
+// spending width on a second label the way a Hide/Show segmented pair would.
+.legal-template-editor__pill-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 2rem;
+  padding: 0.2rem 0.35rem 0.2rem 0.75rem;
+  border: 1px solid var(--doc-editor-border);
+  border-radius: 999px;
+  background: var(--doc-editor-bg);
+  color: var(--doc-editor-fg-muted);
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.2s ease;
+
+  &[aria-pressed='true'] {
+    color: var(--doc-editor-fg);
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  &__switch {
+    position: relative;
+    flex-shrink: 0;
+    width: 1.85rem;
+    height: 1.05rem;
+    border-radius: 999px;
+    background: var(--doc-editor-border);
+    transition: background-color 0.2s ease;
+  }
+
+  &[aria-pressed='true'] &__switch {
+    background: var(--doc-editor-primary);
+  }
+
+  &__knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: calc(1.05rem - 4px);
+    height: calc(1.05rem - 4px);
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+    transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  &[aria-pressed='true'] &__knob {
+    transform: translateX(0.8rem);
+  }
+}
+
 // Host-supplied controls (the `toolbarExtras` prop). The app renders its own components in
 // here — shadcn buttons, CoreUI buttons, whatever it uses — so this deliberately styles only
 // the slot's own box and never the children: any rule reaching inside would fight the host's
@@ -692,6 +838,29 @@
   padding-right: 0.5rem;
   margin-right: 0.25rem;
   border-right: 1px solid var(--doc-editor-border);
+}
+
+// Host-supplied insert tools in the formatting toolbar (the `insertExtras` prop).
+.legal-template-editor__insert-extras {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+// Optional inline document title (the `titleSlot` prop). Grows to take the slack in the bar
+// so the title reads as the document's name rather than as one more small control, but caps
+// out so it can never crowd the controls to its right.
+.legal-template-editor__title-slot {
+  // Grows 3× faster than the spacer next to it, so free space goes to the document's name
+  // before it goes to empty gap — the title only truncates once the bar is genuinely full.
+  flex: 3 1 12rem;
+  min-width: 6rem;
+  max-width: 28rem;
+
+  input {
+    width: 100%;
+  }
 }
 
 // Page & layout tool — a popover anchored to its toolbar button in the doc-actions bar.
@@ -821,7 +990,9 @@
 }
 
 .rich-text-editor__icon-page-guides::before {
-  content: '⁙';
+  // A lined page — now that the button is icon-only this glyph is the whole affordance,
+  // and the old '⁙' read as noise rather than as anything page-shaped.
+  content: '▤';
   font-size: 0.95rem;
   line-height: 1;
 }
