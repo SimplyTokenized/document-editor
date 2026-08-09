@@ -53,23 +53,20 @@ export function reopenCommentOnChange(editor, change) {
 }
 
 /**
- * Toolbar "Add comment" — targets selection or tracked marks, then notifies parent.
+ * The tracked marks a comment could attach itself to across `from..to`. With a collapsed
+ * cursor it also looks one position either side, so clicking inside an existing insertion
+ * or deletion comments on that change rather than doing nothing.
+ *
+ * Shared by requestCommentOnSelection and canCommentOnSelection so the toolbar button's
+ * enabled state is derived from the same scan that the click performs — the two can't
+ * drift into disagreeing about whether there is anything to comment on.
  */
-export function requestCommentOnSelection(editor, currentUserName, onRequestTarget) {
-  if (!editor || editor.isDestroyed) return false
-
-  const initialFrom = editor.state.selection.from
-  const initialTo = editor.state.selection.to
-  editor.chain().focus().setTextSelection({ from: initialFrom, to: initialTo }).run()
-
-  const { state } = editor
+function findCommentableSegments(state, from, to) {
   const insertionMark = state.schema.marks.insertion
   const deletionMark = state.schema.marks.deletion
   const commentMark = state.schema.marks.comment
-  if (!insertionMark || !deletionMark || !commentMark) return false
+  if (!insertionMark || !deletionMark || !commentMark) return null
 
-  const from = initialFrom
-  const to = initialTo
   const scanFrom = from === to ? Math.max(0, from - 1) : from
   const scanTo = from === to ? Math.min(state.doc.content.size, to + 1) : to
 
@@ -93,6 +90,44 @@ export function requestCommentOnSelection(editor, currentUserName, onRequestTarg
       })
     }
   })
+  return segments
+}
+
+/**
+ * Whether "Add comment" would actually do something right now — i.e. there is either a
+ * selection to attach a new comment to, or a tracked change under the cursor to comment on.
+ *
+ * The toolbar uses this to disable the button instead of leaving it live and silently doing
+ * nothing, which is exactly how it used to behave when the user clicked it with a plain
+ * cursor and no selection: no comment, no composer, no explanation.
+ */
+export function canCommentOnSelection(editor) {
+  if (!editor || editor.isDestroyed) return false
+  const { state } = editor
+  const { from, to } = state.selection
+  const segments = findCommentableSegments(state, from, to)
+  if (segments === null) return false
+  // A real selection can always take a fresh comment mark.
+  return from !== to || segments.length > 0
+}
+
+/**
+ * Toolbar "Add comment" — targets selection or tracked marks, then notifies parent.
+ */
+export function requestCommentOnSelection(editor, currentUserName, onRequestTarget) {
+  if (!editor || editor.isDestroyed) return false
+
+  const initialFrom = editor.state.selection.from
+  const initialTo = editor.state.selection.to
+  editor.chain().focus().setTextSelection({ from: initialFrom, to: initialTo }).run()
+
+  const { state } = editor
+  const commentMark = state.schema.marks.comment
+
+  const from = initialFrom
+  const to = initialTo
+  const segments = findCommentableSegments(state, from, to)
+  if (segments === null) return false
 
   if (segments.length === 0) {
     if (from === to) return false

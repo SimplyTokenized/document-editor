@@ -25,7 +25,10 @@ import { TextStyle, FontFamily, FontSize, Color } from '@tiptap/extension-text-s
 import { InsertionMark, DeletionMark } from './extensions/trackChangeMarks.js'
 import { CommentMark } from './extensions/CommentMark.js'
 import { TrackChangesExtension } from './extensions/TrackChangesExtension.js'
-import { requestCommentOnSelection } from './extensions/changeCommentEditor.js'
+import {
+  canCommentOnSelection,
+  requestCommentOnSelection,
+} from './extensions/changeCommentEditor.js'
 import CommentMargin from './extensions/CommentMargin.jsx'
 import { LegalTableCell, LegalTableHeader } from './extensions/legalTableCell.js'
 import LegalTable from './extensions/legalTable.js'
@@ -79,6 +82,7 @@ const DEFAULT_LABELS = {
   words: 'words',
   characters: 'characters',
   addComment: 'Add comment',
+  addCommentNeedsSelection: 'Select the text you want to comment on first',
   changeWithAI: 'Change with AI',
   insertTable: 'Insert table',
   addColumnBefore: 'Add column before',
@@ -88,6 +92,7 @@ const DEFAULT_LABELS = {
   addRowAfter: 'Add row after',
   deleteRow: 'Delete row',
   deleteTable: 'Delete table',
+  file: 'File',
   importDocx: 'Import .docx',
   exportDocx: 'Export .docx',
   exportDocxTracked: 'Export .docx (tracked)',
@@ -168,6 +173,86 @@ ToolbarButton.propTypes = {
   title: PropTypes.string,
 }
 
+/**
+ * A toolbar button that opens a small menu of actions. Used to demote the rarely-used
+ * file commands (import/export) from four permanent buttons to one, which is most of what
+ * kept the document-actions bar wrapping onto a second row.
+ *
+ * Deliberately hand-rolled rather than pulled from a UI kit: this module ships into apps on
+ * CoreUI and on shadcn, and taking a dependency on either is exactly the coupling it exists
+ * to avoid. Same pattern as PageLayoutPanel's popover — close on outside click and Escape.
+ */
+const ToolbarMenu = ({ label, title, children }) => {
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef(null)
+
+  useEffect(() => {
+    if (!open) return undefined
+    const onPointerDown = (event) => {
+      if (rootRef.current && !rootRef.current.contains(event.target)) setOpen(false)
+    }
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    window.document.addEventListener('mousedown', onPointerDown)
+    window.document.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.document.removeEventListener('mousedown', onPointerDown)
+      window.document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [open])
+
+  return (
+    <div className="legal-template-editor__menu" ref={rootRef}>
+      <button
+        type="button"
+        className={classNames('rich-text-editor__toolbar-btn', {
+          'rich-text-editor__toolbar-btn--active': open,
+        })}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        title={title}
+        onClick={() => setOpen((v) => !v)}
+      >
+        {label}
+        <span className="legal-template-editor__menu-caret" aria-hidden="true" />
+      </button>
+      {open ? (
+        // Clicking any action closes the menu — every entry here is a one-shot command.
+        <div className="legal-template-editor__menu-panel" role="menu" onClick={() => setOpen(false)}>
+          {children}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+ToolbarMenu.propTypes = {
+  label: PropTypes.node.isRequired,
+  title: PropTypes.string,
+  children: PropTypes.node.isRequired,
+}
+
+const ToolbarMenuItem = ({ disabled, onClick, title, children }) => (
+  <button
+    type="button"
+    role="menuitem"
+    className="legal-template-editor__menu-item"
+    disabled={disabled}
+    onClick={onClick}
+    title={title}
+  >
+    {children}
+  </button>
+)
+
+ToolbarMenuItem.propTypes = {
+  disabled: PropTypes.bool,
+  onClick: PropTypes.func.isRequired,
+  title: PropTypes.string,
+  children: PropTypes.node.isRequired,
+}
+
 // `ctx.editor` can be null on the selector's final invocation during teardown
 // (e.g. the editor is destroyed while this toolbar hasn't unmounted yet) —
 // without this guard that transient null crashes the whole tree.
@@ -192,6 +277,7 @@ const EMPTY_TOOLBAR_STATE = {
   isAlignRight: false,
   canUndo: false,
   canRedo: false,
+  canComment: false,
 }
 
 const selectToolbarState = (ctx) => {
@@ -217,6 +303,8 @@ const selectToolbarState = (ctx) => {
     isAlignRight: isLegalContentAlignActive(ctx.editor, 'right'),
     canUndo: ctx.editor.can().chain().focus().undo().run(),
     canRedo: ctx.editor.can().chain().focus().redo().run(),
+    // Drives the "Add comment" button's enabled state — see canCommentOnSelection.
+    canComment: canCommentOnSelection(ctx.editor),
   }
 }
 
@@ -303,7 +391,11 @@ const TipTapMenuBar = ({ labels, onComment, onImageRequest, onChangeWithAI, comm
       <div className="rich-text-editor__toolbar" role="toolbar" aria-label="Comments">
         {onComment ? (
           <div className="rich-text-editor__toolbar-group">
-            <ToolbarButton title={labels.addComment} onClick={onComment}>
+            <ToolbarButton
+              title={state.canComment ? labels.addComment : labels.addCommentNeedsSelection}
+              disabled={!state.canComment}
+              onClick={onComment}
+            >
               <span className="rich-text-editor__icon-comment" aria-hidden="true" />
             </ToolbarButton>
           </div>
@@ -516,7 +608,11 @@ const TipTapMenuBar = ({ labels, onComment, onImageRequest, onChangeWithAI, comm
       {onComment || onChangeWithAI ? (
         <div className="rich-text-editor__toolbar-group">
           {onComment ? (
-            <ToolbarButton title={labels.addComment} onClick={onComment}>
+            <ToolbarButton
+              title={state.canComment ? labels.addComment : labels.addCommentNeedsSelection}
+              disabled={!state.canComment}
+              onClick={onComment}
+            >
               <span className="rich-text-editor__icon-comment" aria-hidden="true" />
             </ToolbarButton>
           ) : null}
@@ -705,6 +801,7 @@ const DocumentActionsBar = ({
   onZoomOut,
   onZoomReset,
   onContentReplaced,
+  toolbarExtras,
 }) => {
   const fileInputRef = useRef(null)
   const [isImporting, setIsImporting] = useState(false)
@@ -794,37 +891,52 @@ const DocumentActionsBar = ({
         style={{ display: 'none' }}
         onChange={handleFileSelected}
       />
-      <button
-        type="button"
-        className="rich-text-editor__toolbar-btn"
-        disabled={isImporting}
-        onClick={handleImportClick}
+      {/* File commands are used once or twice a session, so they live behind one menu
+          instead of four always-on buttons. */}
+      <ToolbarMenu
+        label={isImporting ? labels.importing : isExporting ? labels.exporting : labels.file}
+        title={labels.file}
       >
-        {isImporting ? labels.importing : labels.importDocx}
-      </button>
-      <button
-        type="button"
-        className="rich-text-editor__toolbar-btn"
-        disabled={isExporting}
-        onClick={() => handleExport(false)}
-      >
-        {isExporting ? labels.exporting : labels.exportDocx}
-      </button>
-      {reviewMode ? (
-        <button
-          type="button"
-          className="rich-text-editor__toolbar-btn"
-          disabled={isExporting}
-          onClick={() => handleExport(true)}
-          title={labels.exportDocxTrackedHint}
+        <ToolbarMenuItem disabled={isImporting} onClick={handleImportClick}>
+          {labels.importDocx}
+        </ToolbarMenuItem>
+        <ToolbarMenuItem disabled={isExporting} onClick={() => handleExport(false)}>
+          {labels.exportDocx}
+        </ToolbarMenuItem>
+        {reviewMode ? (
+          <ToolbarMenuItem
+            disabled={isExporting}
+            onClick={() => handleExport(true)}
+            title={labels.exportDocxTrackedHint}
+          >
+            {labels.exportDocxTracked}
+          </ToolbarMenuItem>
+        ) : null}
+        <ToolbarMenuItem onClick={handleExportPdf}>{labels.exportPdf}</ToolbarMenuItem>
+      </ToolbarMenu>
+      {/* View controls: one group of icon-only toggles. They earn a permanent spot (used
+          throughout a session) but not the width their labels used to take. */}
+      <div className="rich-text-editor__toolbar-group">
+        <PageLayoutPanel labels={labels} pageSetup={pageSetup} onPageSetup={onPageSetup} />
+        <ToolbarButton
+          title={labels.pageGuides}
+          active={pageGuides}
+          onClick={onTogglePageGuides}
         >
-          {labels.exportDocxTracked}
-        </button>
-      ) : null}
-      <button type="button" className="rich-text-editor__toolbar-btn" onClick={handleExportPdf}>
-        {labels.exportPdf}
-      </button>
+          <span className="rich-text-editor__icon-page-guides" aria-hidden="true" />
+        </ToolbarButton>
+        <ToolbarButton
+          title={isFullscreen ? labels.exitFullscreen : labels.enterFullscreen}
+          active={isFullscreen}
+          onClick={onToggleFullscreen}
+        >
+          <span className="rich-text-editor__icon-fullscreen" aria-hidden="true" />
+        </ToolbarButton>
+      </div>
       <div className="legal-template-editor__doc-actions-spacer" />
+      {toolbarExtras ? (
+        <div className="legal-template-editor__toolbar-extras">{toolbarExtras}</div>
+      ) : null}
       <div className="rich-text-editor__toolbar-group legal-template-editor__zoom">
         <ToolbarButton
           title={labels.zoomOut}
@@ -849,26 +961,6 @@ const DocumentActionsBar = ({
           <span className="rich-text-editor__icon-zoom-in" aria-hidden="true" />
         </ToolbarButton>
       </div>
-      <PageLayoutPanel labels={labels} pageSetup={pageSetup} onPageSetup={onPageSetup} />
-      <button
-        type="button"
-        className={classNames('rich-text-editor__toolbar-btn', {
-          'rich-text-editor__toolbar-btn--active': pageGuides,
-        })}
-        onClick={onTogglePageGuides}
-        title={labels.pageGuides}
-      >
-        {labels.pageGuides}
-      </button>
-      <button
-        type="button"
-        className="rich-text-editor__toolbar-btn"
-        onClick={onToggleFullscreen}
-        title={isFullscreen ? labels.exitFullscreen : labels.enterFullscreen}
-      >
-        <span className="rich-text-editor__icon-fullscreen" aria-hidden="true" />
-        {isFullscreen ? labels.exitFullscreen : labels.enterFullscreen}
-      </button>
     </div>
   )
 }
@@ -891,6 +983,7 @@ DocumentActionsBar.propTypes = {
   onZoomOut: PropTypes.func,
   onZoomReset: PropTypes.func,
   onContentReplaced: PropTypes.func,
+  toolbarExtras: PropTypes.node,
 }
 
 const TipTapEditor = ({
@@ -910,6 +1003,7 @@ const TipTapEditor = ({
   onImageRequest,
   onChangeWithAI,
   commentOnly,
+  toolbarExtras,
 }) => {
   const labels = { ...DEFAULT_LABELS, ...labelsProp }
   const lastEmittedHtmlRef = useRef(content ?? '')
@@ -1138,7 +1232,7 @@ const TipTapEditor = ({
         ...buildLayoutVars(pageSetup),
       }}
     >
-      {editable !== false && (
+      {editable !== false ? (
         <DocumentActionsBar
           editor={editor}
           labels={labels}
@@ -1157,8 +1251,17 @@ const TipTapEditor = ({
           onZoomOut={() => setZoom((z) => clampZoom(z - ZOOM_STEP))}
           onZoomReset={() => setZoom(1)}
           onContentReplaced={scheduleAutoFitZoom}
+          toolbarExtras={toolbarExtras}
         />
-      )}
+      ) : toolbarExtras ? (
+        // Read-only still shows the host's own controls — a reader needs version history and
+        // a preview/edit switch just as much as an author, and the rest of the actions bar
+        // (import, export, zoom) is what's inappropriate here, not the slot.
+        <div className="legal-template-editor__doc-actions">
+          <div className="legal-template-editor__doc-actions-spacer" />
+          <div className="legal-template-editor__toolbar-extras">{toolbarExtras}</div>
+        </div>
+      ) : null}
       <Tiptap editor={editor}>
         {editable !== false && (
           <TipTapMenuBar
@@ -1239,6 +1342,11 @@ TipTapEditor.propTypes = {
   onChangeWithAI: PropTypes.func,
   // Review "comment only" stage: hide formatting tools, keep only commenting.
   commentOnly: PropTypes.bool,
+  // Host-supplied controls rendered inside the editor's document-actions bar. Lets an app
+  // put its own document-level actions (version history, a preview toggle, a comments
+  // switch) in the editor chrome instead of floating above it, without this module
+  // learning anything about those features.
+  toolbarExtras: PropTypes.node,
 }
 
 export default TipTapEditor

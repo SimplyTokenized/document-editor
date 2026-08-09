@@ -41,6 +41,14 @@ export interface ContractEditorProps {
   onChangeWithAI?: () => void
   /** Review "comment only" stage: hide formatting tools, keep only commenting. */
   commentOnly?: boolean
+  /**
+   * Host-supplied controls rendered inside the editor's document-actions bar, so an app can
+   * put its own document-level actions (version history, a preview toggle, a comments
+   * switch) in the editor chrome instead of floating above it. Typed as `unknown` rather
+   * than `ReactNode` to keep this package free of a dependency on React's types — see the
+   * note on ContractEditor below. Pass JSX.
+   */
+  toolbarExtras?: unknown
 }
 
 /**

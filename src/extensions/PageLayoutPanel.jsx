@@ -164,8 +164,10 @@ const PageLayoutPanel = ({ labels, pageSetup, onPageSetup }) => {
         title={labels.layout}
         onClick={() => setOpen((v) => !v)}
       >
+        {/* Icon-only: this sits in the view-controls group next to page guides and
+            fullscreen, where the labels were most of what pushed the actions bar onto a
+            second row. The title attribute carries the name. */}
         <span className="rich-text-editor__icon-layout" aria-hidden="true" />
-        {labels.layout}
       </button>
 
       {open ? (

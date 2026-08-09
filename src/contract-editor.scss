@@ -660,6 +660,20 @@
   flex: 1 1 auto;
 }
 
+// Host-supplied controls (the `toolbarExtras` prop). The app renders its own components in
+// here — shadcn buttons, CoreUI buttons, whatever it uses — so this deliberately styles only
+// the slot's own box and never the children: any rule reaching inside would fight the host's
+// UI kit, which is the coupling this module exists to avoid.
+.legal-template-editor__toolbar-extras {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding-right: 0.5rem;
+  margin-right: 0.25rem;
+  border-right: 1px solid var(--doc-editor-border);
+}
+
 // Page & layout tool — a popover anchored to its toolbar button in the doc-actions bar.
 // Also reused by the contextual table-size popover in the formatting toolbar.
 .legal-template-editor__layout {
@@ -784,6 +798,68 @@
   content: '⤢';
   font-size: 0.95rem;
   line-height: 1;
+}
+
+.rich-text-editor__icon-page-guides::before {
+  content: '⁙';
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+// Dropdown of one-shot commands (the File menu). Anchored to its trigger the same way the
+// page-layout popover is.
+.legal-template-editor__menu {
+  position: relative;
+  display: inline-flex;
+
+  .rich-text-editor__toolbar-btn {
+    gap: 0.35rem;
+  }
+}
+
+.legal-template-editor__menu-caret::before {
+  content: '▾';
+  font-size: 0.7rem;
+  line-height: 1;
+}
+
+.legal-template-editor__menu-panel {
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  left: 0;
+  z-index: 20;
+  min-width: 12rem;
+  display: flex;
+  flex-direction: column;
+  padding: 0.25rem;
+  border: 1px solid var(--doc-editor-border);
+  border-radius: var(--doc-editor-radius);
+  background: var(--doc-editor-bg);
+  box-shadow: var(--doc-editor-shadow);
+}
+
+.legal-template-editor__menu-item {
+  display: block;
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  border: 0;
+  border-radius: calc(var(--doc-editor-radius) - 1px);
+  background: transparent;
+  color: var(--doc-editor-fg);
+  font: inherit;
+  font-size: 0.8125rem;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: var(--doc-editor-bg-muted);
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
 }
 
 .rich-text-editor__icon-zoom-in::before,
