@@ -110,7 +110,15 @@ const layoutDecorationsKey = new PluginKey('legalTableLayoutDecorations')
  * row (rowspan) would shift later rows' columns; the legal-sheet tables this editor handles
  * do not use rowspan.
  */
-const rescaleTableColumns = (tr, tablePos, tableNode, widthPct, view, printableWidthPx = null) => {
+const rescaleTableColumns = (
+  tr,
+  tablePos,
+  tableNode,
+  widthPct,
+  view,
+  printableWidthPx = null,
+  onlyOverflowing = false,
+) => {
   if (!(widthPct > 0)) return
   // Prefer an explicit printable width over measuring the DOM: during a page-setup change
   // the new margins reach the DOM as CSS variables on React's schedule, and a measurement
@@ -165,6 +173,11 @@ const rescaleTableColumns = (tr, tablePos, tableNode, widthPct, view, printableW
 
   const currentTotal = currentWidths.reduce((sum, w) => sum + w, 0)
   if (!(currentTotal > 0)) return
+  // Clamp mode: leave any table that already fits alone. Used by the on-load pass, whose
+  // job is only to repair impossible states (a table wider than the paper's content box,
+  // which CSS cannot cap — a fixed-layout table's colgroup beats max-width), never to
+  // second-guess widths an import or an author chose deliberately.
+  if (onlyOverflowing && currentTotal <= innerWidth + 1) return
   const ratio = targetPx / currentTotal
   const nextWidths = currentWidths.map((w) => Math.max(10, Math.round(w * ratio)))
 
@@ -198,7 +211,7 @@ const rescaleTableColumns = (tr, tablePos, tableNode, widthPct, view, printableW
  * position shifts mid-walk. Tagged `skipTrackChanges` because re-fitting is layout
  * bookkeeping, not an authored edit — it must never show up as a redline.
  */
-export const refitTablesToPrintableWidth = (editor, pageSetup = null) => {
+export const refitTablesToPrintableWidth = (editor, pageSetup = null, { onlyOverflowing = false } = {}) => {
   if (!editor || editor.isDestroyed) return false
   // Printable width straight from the page geometry (twips), not from the DOM: 1 inch is
   // 1440 twips and 96 CSS px, so px = twips / 15. Passing the just-chosen pageSetup makes
@@ -225,7 +238,41 @@ export const refitTablesToPrintableWidth = (editor, pageSetup = null) => {
   const tr = state.tr
   tables.forEach(({ node, pos }) => {
     const pct = node.attrs?.tableWidthPct
-    rescaleTableColumns(tr, pos, node, pct > 0 ? pct : 100, view, printableWidthPx)
+    rescaleTableColumns(tr, pos, node, pct > 0 ? pct : 100, view, printableWidthPx, onlyOverflowing)
+
+    // Nested tables are governed by the CELL they sit in, not by the page — but they carry
+    // fixed pixel columns just like their parent, so once the parent's columns change (or
+    // were saved out of sync) a nested table can be wider than its cell and run straight off
+    // the paper, where no CSS can stop it. Clamp each one to its cell's fresh width. Always
+    // clamp-only: a nested table narrower than its cell is a layout choice, never repaired.
+    //
+    // Every change so far is attribute-only (setNodeMarkup), so positions computed from the
+    // pre-transaction tree stay valid, and tr.doc already shows the parent's new widths.
+    const fresh = tr.doc.nodeAt(pos)
+    if (!fresh) return
+    fresh.forEach((row, rowOffset) => {
+      if (row.type.name !== 'tableRow') return
+      let cellPos = pos + 1 + rowOffset + 1
+      row.forEach((cell) => {
+        const cellWidth = (cell.attrs.colwidth || []).reduce((sum, w) => sum + (w || 0), 0)
+        if (cellWidth > 0) {
+          cell.forEach((child, childOffset) => {
+            if (child.type.name === 'table') {
+              rescaleTableColumns(
+                tr,
+                cellPos + 1 + childOffset,
+                child,
+                100,
+                view,
+                Math.max(60, cellWidth - 12), // minus the cell's own horizontal padding
+                true,
+              )
+            }
+          })
+        }
+        cellPos += cell.nodeSize
+      })
+    })
   })
   if (!tr.docChanged) return false
   tr.setMeta('skipTrackChanges', true)
