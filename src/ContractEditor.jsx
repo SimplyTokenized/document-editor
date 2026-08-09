@@ -109,6 +109,8 @@ const DEFAULT_LABELS = {
   zoomOut: 'Zoom out',
   zoomReset: 'Reset zoom to 100%',
   pageGuides: 'Page guides',
+  pageGuidesHint:
+    'Show where each printed page ends. A document shorter than one page has no break to show.',
   layout: 'Page & layout',
   pageSize: 'Page size',
   preset: 'Format',
@@ -379,7 +381,14 @@ FormattingGroup.propTypes = {
   editor: PropTypes.object.isRequired,
 }
 
-const TipTapMenuBar = ({ labels, onComment, onImageRequest, onChangeWithAI, commentOnly }) => {
+const TipTapMenuBar = ({
+  labels,
+  onComment,
+  onImageRequest,
+  onChangeWithAI,
+  commentOnly,
+  insertExtras,
+}) => {
   const { editor, setLink, addImage } = useEditorCommands()
   const state = useTiptapState(selectToolbarState)
 
@@ -605,6 +614,12 @@ const TipTapMenuBar = ({ labels, onComment, onImageRequest, onChangeWithAI, comm
         </ToolbarButton>
       </div>
 
+      {insertExtras ? (
+        // Host-supplied insert tools (merge-field placeholders, signature anchors). They sit
+        // with image/link/table because they are the same kind of action — put something at
+        // the cursor — rather than in the document-actions bar above.
+        <div className="legal-template-editor__insert-extras">{insertExtras}</div>
+      ) : null}
       {onComment || onChangeWithAI ? (
         <div className="rich-text-editor__toolbar-group">
           {onComment ? (
@@ -650,6 +665,7 @@ TipTapMenuBar.propTypes = {
   onImageRequest: PropTypes.func,
   onChangeWithAI: PropTypes.func,
   commentOnly: PropTypes.bool,
+  insertExtras: PropTypes.node,
 }
 
 const TipTapBubbleMenu = () => {
@@ -802,6 +818,7 @@ const DocumentActionsBar = ({
   onZoomReset,
   onContentReplaced,
   toolbarExtras,
+  titleSlot,
 }) => {
   const fileInputRef = useRef(null)
   const [isImporting, setIsImporting] = useState(false)
@@ -914,16 +931,27 @@ const DocumentActionsBar = ({
         ) : null}
         <ToolbarMenuItem onClick={handleExportPdf}>{labels.exportPdf}</ToolbarMenuItem>
       </ToolbarMenu>
+      {titleSlot ? (
+        // Optional inline document title, right after File. Optional because it only makes
+        // sense where the editor IS the page (a contract has one title, edited here); a host
+        // that embeds the editor as one field among many keeps its own form field instead
+        // and simply passes nothing.
+        <div className="legal-template-editor__title-slot">{titleSlot}</div>
+      ) : null}
       {/* View controls: one group of icon-only toggles. They earn a permanent spot (used
           throughout a session) but not the width their labels used to take. */}
       <div className="rich-text-editor__toolbar-group">
         <PageLayoutPanel labels={labels} pageSetup={pageSetup} onPageSetup={onPageSetup} />
+        {/* Keeps its label while its neighbours are icon-only: it is the one STATE toggle
+            in this group (the others open a popover / switch a mode), and an icon alone
+            gives no clue whether guides are on, off, or what "guides" even means. */}
         <ToolbarButton
-          title={labels.pageGuides}
+          title={labels.pageGuidesHint}
           active={pageGuides}
           onClick={onTogglePageGuides}
         >
           <span className="rich-text-editor__icon-page-guides" aria-hidden="true" />
+          {labels.pageGuides}
         </ToolbarButton>
         <ToolbarButton
           title={isFullscreen ? labels.exitFullscreen : labels.enterFullscreen}
@@ -984,6 +1012,7 @@ DocumentActionsBar.propTypes = {
   onZoomReset: PropTypes.func,
   onContentReplaced: PropTypes.func,
   toolbarExtras: PropTypes.node,
+  titleSlot: PropTypes.node,
 }
 
 const TipTapEditor = ({
@@ -1004,6 +1033,8 @@ const TipTapEditor = ({
   onChangeWithAI,
   commentOnly,
   toolbarExtras,
+  insertExtras,
+  titleSlot,
 }) => {
   const labels = { ...DEFAULT_LABELS, ...labelsProp }
   const lastEmittedHtmlRef = useRef(content ?? '')
@@ -1252,14 +1283,20 @@ const TipTapEditor = ({
           onZoomReset={() => setZoom(1)}
           onContentReplaced={scheduleAutoFitZoom}
           toolbarExtras={toolbarExtras}
+          titleSlot={titleSlot}
         />
-      ) : toolbarExtras ? (
+      ) : toolbarExtras || titleSlot ? (
         // Read-only still shows the host's own controls — a reader needs version history and
         // a preview/edit switch just as much as an author, and the rest of the actions bar
         // (import, export, zoom) is what's inappropriate here, not the slot.
         <div className="legal-template-editor__doc-actions">
+          {titleSlot ? (
+            <div className="legal-template-editor__title-slot">{titleSlot}</div>
+          ) : null}
           <div className="legal-template-editor__doc-actions-spacer" />
-          <div className="legal-template-editor__toolbar-extras">{toolbarExtras}</div>
+          {toolbarExtras ? (
+            <div className="legal-template-editor__toolbar-extras">{toolbarExtras}</div>
+          ) : null}
         </div>
       ) : null}
       <Tiptap editor={editor}>
@@ -1269,6 +1306,7 @@ const TipTapEditor = ({
             commentOnly={commentOnly}
             onImageRequest={onImageRequest}
             onChangeWithAI={onChangeWithAI}
+            insertExtras={insertExtras}
             onComment={
               showComments && trackChanges?.enabled
                 ? () =>
@@ -1347,6 +1385,11 @@ TipTapEditor.propTypes = {
   // switch) in the editor chrome instead of floating above it, without this module
   // learning anything about those features.
   toolbarExtras: PropTypes.node,
+  // Host-supplied insert tools rendered in the formatting toolbar, alongside image/link/
+  // table. Same contract as toolbarExtras: this module only renders the node.
+  insertExtras: PropTypes.node,
+  // Optional inline document title shown in the actions bar, after the File menu.
+  titleSlot: PropTypes.node,
 }
 
 export default TipTapEditor

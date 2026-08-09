@@ -49,6 +49,18 @@ export interface ContractEditorProps {
    * note on ContractEditor below. Pass JSX.
    */
   toolbarExtras?: unknown
+  /**
+   * Host-supplied insert tools rendered in the formatting toolbar next to image/link/table
+   * — merge-field placeholders, signature anchors. Same contract as `toolbarExtras`: the
+   * editor only renders the node. Pass JSX.
+   */
+  insertExtras?: unknown
+  /**
+   * Optional inline document title rendered in the actions bar, right after the File menu.
+   * Pass nothing where the editor is only one field among many and the host already has its
+   * own title input. Pass JSX.
+   */
+  titleSlot?: unknown
 }
 
 /**
