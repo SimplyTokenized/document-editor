@@ -8,8 +8,6 @@
  * simply not part of the supported surface.
  */
 
-import type { ComponentType } from 'react'
-
 export * from './extensions/trackChangesUtils.js'
 export * from './extensions/changeCommentEditor.js'
 export * from './extensions/changeCommentPayload.js'
@@ -45,7 +43,17 @@ export interface ContractEditorProps {
   commentOnly?: boolean
 }
 
-export const ContractEditor: ComponentType<ContractEditorProps>
+/**
+ * Declared as a plain function returning `any` rather than React's `ComponentType`
+ * on purpose. The host apps are not on the same `@types/react` major — the asset
+ * manager still declares 18 while running React 19 — and a `ComponentType` pinned to
+ * one major is rejected as a JSX element type by the other with a baffling
+ * "cannot be used as a JSX component / Property 'refs' is missing" error (TS2786).
+ * An `any` return is accepted by every version and gives up nothing that matters:
+ * the props, which are the part callers need checked, stay fully typed. It also
+ * keeps this package free of any dependency on React's own type packages.
+ */
+export declare function ContractEditor(props: ContractEditorProps): any
 
 export function serializeLegalDocumentEditorHtml(html: string): string
 export function getRichTextPlainText(html: string): string

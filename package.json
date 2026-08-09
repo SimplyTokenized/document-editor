@@ -10,7 +10,9 @@
     "url": "git@github.com:SimplyTokenized/document-editor.git"
   },
   "files": [
-    "src"
+    "src",
+    "vite-dedupe.js",
+    "vite-dedupe.d.ts"
   ],
   "main": "./src/index.js",
   "types": "./src/index.d.ts",
@@ -22,6 +24,10 @@
     "./extensions/*": {
       "types": "./src/extensions/*.d.ts",
       "default": "./src/extensions/*.js"
+    },
+    "./vite-dedupe": {
+      "types": "./vite-dedupe.d.ts",
+      "default": "./vite-dedupe.js"
     },
     "./package.json": "./package.json"
   },

@@ -53,28 +53,41 @@ publish, build or reinstall step:
 
 This assumes all repos are checked out as siblings under the same parent directory.
 
-Because `link:` does not install the package's own dependencies, everything this module
+This package has no `node_modules` of its own and needs no install or build step.
+
+Because `link:` does not install a linked package's dependencies, everything this module
 needs is declared as a **peer dependency** and must be present in the host app's
-`package.json`. Each host also needs two Vite settings, both of which exist because the
-linked source lives outside the app's root:
+`package.json`. Each host also needs two Vite settings, both of which exist only because
+the linked source lives outside the app's root:
 
 ```js
+import { documentEditorDedupe } from '@simplytokenized/document-editor/vite-dedupe'
+
 resolve: {
-  // Without this the linked module resolves its own copy of React/TipTap from outside
-  // the app, and you get two React instances (invalid hook call) or two ProseMirror
-  // schemas (Fragment not instanceof Fragment).
-  dedupe: ['react', 'react-dom', '@tiptap/core', '@tiptap/react', '@tiptap/pm', ...],
+  dedupe: [...documentEditorDedupe],
 },
 server: {
   fs: { allow: ['..'] },  // let the dev server serve files from the sibling checkout
 },
 ```
 
+`vite-dedupe.js` is exported from this package rather than copy-pasted into each app so
+that adding a dependency here cannot silently break the others — see the comment in that
+file for what goes wrong without it (a Rollup "failed to resolve import" at build time, or
+two copies of React/ProseMirror at dev time).
+
 ## Types
 
 The implementation is untyped JS/JSX. Hand-written `.d.ts` files next to each entry point
 describe the supported public surface — see `src/index.d.ts`. When you add a public export,
 add its declaration too; anything undeclared is not part of the supported API.
+
+These declarations deliberately do **not** reference React's own types. The host apps are
+not on the same `@types/react` major — the asset manager still declares 18 while running
+React 19 — and typing the component as `ComponentType<Props>` against one major makes the
+other reject it as a JSX element (TS2786). `ContractEditor` is therefore declared as a
+plain function returning `any`, which every version accepts while keeping its props fully
+checked.
 
 ## History
 
