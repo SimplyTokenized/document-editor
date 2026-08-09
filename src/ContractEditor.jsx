@@ -31,7 +31,7 @@ import {
 } from './extensions/changeCommentEditor.js'
 import CommentMargin from './extensions/CommentMargin.jsx'
 import { LegalTableCell, LegalTableHeader } from './extensions/legalTableCell.js'
-import LegalTable from './extensions/legalTable.js'
+import LegalTable, { refitTablesToPrintableWidth } from './extensions/legalTable.js'
 import PageLayoutPanel, { buildLayoutVars } from './extensions/PageLayoutPanel.jsx'
 import TablePropertiesPanel from './extensions/TablePropertiesPanel.jsx'
 import { parsePageSetupMarker, withPageSetupMarker } from './extensions/pageSetupMarker.js'
@@ -283,7 +283,13 @@ const EMPTY_TOOLBAR_STATE = {
 }
 
 const selectToolbarState = (ctx) => {
-  if (!ctx.editor) return EMPTY_TOOLBAR_STATE
+  // A DESTROYED editor is not a null editor: `useEditorState` can run this
+  // selector once more after the instance has been torn down (a consumer
+  // remounting the editor via `key`, or unmounting it while the toolbar is
+  // still subscribed). The object is still there, but its view and state are
+  // null, so `editor.can()` dereferences null and takes the whole React root
+  // down. Treat destroyed exactly like absent.
+  if (!ctx.editor || ctx.editor.isDestroyed) return EMPTY_TOOLBAR_STATE
   return {
     isBold: ctx.editor.isActive('bold'),
     isItalic: ctx.editor.isActive('italic'),
@@ -1188,11 +1194,17 @@ const TipTapEditor = ({
   const handlePageSetup = (next) => {
     pageSetupRef.current = next
     setPageSetup(next)
-    if (editor) {
-      const html = withPageSetupMarker(serializeLegalDocumentEditorHtml(editor), next)
-      lastEmittedHtmlRef.current = html
-      onChange?.(html)
-    }
+    if (!editor) return
+
+    // Tables hold absolute pixel column widths, so a page that just got wider or narrower
+    // leaves them at their old size — a white strip down one side that no margin setting can
+    // close. Re-fit them to the new printable width, then emit ONCE with both changes in it.
+    // `next` is passed so the refit computes the width from the chosen geometry itself —
+    // measuring the DOM here loses a race with React applying the new CSS variables.
+    refitTablesToPrintableWidth(editor, next)
+    const html = withPageSetupMarker(serializeLegalDocumentEditorHtml(editor), next)
+    lastEmittedHtmlRef.current = html
+    onChange?.(html)
   }
 
   useEffect(() => {

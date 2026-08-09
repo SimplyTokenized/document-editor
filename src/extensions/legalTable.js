@@ -90,49 +90,148 @@ const layoutDecorationStyle = (attrs) => {
 
 const layoutDecorationsKey = new PluginKey('legalTableLayoutDecorations')
 
-// Rescale the first row's per-cell `colwidth` (the data TableView reads to build the table's
-// colgroup — see updateColumns in @tiptap/extension-table) so the table's actual rendered
-// width matches `widthPct` of the editor's printable content width. This is the same
-// mechanism a manual drag-resize uses, so it's honoured by the node view for free.
-const rescaleTableColumns = (tr, tablePos, tableNode, widthPct, view) => {
-  if (!(widthPct > 0) || !view?.dom) return
-  const proseEl = view.dom
-  const cs = window.getComputedStyle(proseEl)
-  const innerWidth =
-    proseEl.clientWidth - parseFloat(cs.paddingLeft || '0') - parseFloat(cs.paddingRight || '0')
+/**
+ * Rescale per-cell `colwidth` so the table's rendered width matches `widthPct` of the
+ * editor's printable content width.
+ *
+ * EVERY cell in EVERY row is rewritten, and that is the load-bearing part, not thoroughness:
+ * prosemirror-tables runs a `fixTables` normalizer after each transaction (no meta skips
+ * it), and when cells in the same column disagree about their colwidth it rewrites the
+ * minority back to the column's established width. A drag-resize updates the whole column,
+ * so it survives; the previous version of this function rewrote only the first row, and on
+ * a .docx-imported table — where the importer stamps colwidth on every cell of every row —
+ * the untouched rows outvoted row 1 and the normalizer reverted the change synchronously,
+ * inside the same dispatch. The width control read as simply dead.
+ *
+ * Attribute-only changes (setNodeMarkup) never resize the document, so every position
+ * computed from the pre-transaction node stays valid across all the writes.
+ *
+ * Known limit: the column cursor counts colspans only. A cell spanning DOWN from an earlier
+ * row (rowspan) would shift later rows' columns; the legal-sheet tables this editor handles
+ * do not use rowspan.
+ */
+const rescaleTableColumns = (tr, tablePos, tableNode, widthPct, view, printableWidthPx = null) => {
+  if (!(widthPct > 0)) return
+  // Prefer an explicit printable width over measuring the DOM: during a page-setup change
+  // the new margins reach the DOM as CSS variables on React's schedule, and a measurement
+  // taken in the same tick (or even the next frame) can still see the OLD geometry — the
+  // refit then computes the old width and visibly does nothing. The caller that changes the
+  // page KNOWS the new geometry; only interactive per-table sizing falls back to measuring.
+  let innerWidth = printableWidthPx
+  if (!(innerWidth > 0)) {
+    if (!view?.dom) return
+    const proseEl = view.dom
+    const cs = window.getComputedStyle(proseEl)
+    innerWidth =
+      proseEl.clientWidth - parseFloat(cs.paddingLeft || '0') - parseFloat(cs.paddingRight || '0')
+  }
   if (!(innerWidth > 0)) return
   const targetPx = Math.max(50, Math.round((innerWidth * widthPct) / 100))
 
-  const firstRow = tableNode.firstChild
-  if (!firstRow) return
+  const rows = []
+  tableNode.forEach((row, offset) => rows.push({ row, offset }))
+  if (!rows.length) return
 
-  const currentWidths = []
-  firstRow.forEach((cell) => {
-    const colspan = cell.attrs.colspan || 1
-    const colwidth = cell.attrs.colwidth
-    for (let i = 0; i < colspan; i += 1) {
-      currentWidths.push((colwidth && colwidth[i]) || DEFAULT_CELL_MIN_WIDTH)
-    }
+  // Grid shape: column count is the widest row measured in colspans, and each column's
+  // current width is the first defined value found for it in any row — a spanning banner
+  // row alone says nothing about where the internal boundaries fall.
+  let colCount = 0
+  rows.forEach(({ row }) => {
+    let n = 0
+    row.forEach((cell) => {
+      n += cell.attrs.colspan || 1
+    })
+    colCount = Math.max(colCount, n)
   })
+  if (!colCount) return
+
+  const currentWidths = new Array(colCount).fill(0)
+  rows.forEach(({ row }) => {
+    let col = 0
+    row.forEach((cell) => {
+      const span = cell.attrs.colspan || 1
+      const colwidth = cell.attrs.colwidth
+      for (let i = 0; i < span && col + i < colCount; i += 1) {
+        if (colwidth && colwidth[i] && !currentWidths[col + i]) {
+          currentWidths[col + i] = colwidth[i]
+        }
+      }
+      col += span
+    })
+  })
+  for (let i = 0; i < colCount; i += 1) {
+    if (!currentWidths[i]) currentWidths[i] = DEFAULT_CELL_MIN_WIDTH
+  }
+
   const currentTotal = currentWidths.reduce((sum, w) => sum + w, 0)
   if (!(currentTotal > 0)) return
   const ratio = targetPx / currentTotal
   const nextWidths = currentWidths.map((w) => Math.max(10, Math.round(w * ratio)))
 
-  // tablePos → table's own start token; +1 steps into the table (start of the first row);
-  // +1 again steps into that row (start of its first cell) — standard ProseMirror position
-  // arithmetic for "first child of the first child". Attribute-only changes (setNodeMarkup)
-  // never resize the document, so these positions, all computed from the pre-transaction
-  // node, stay valid across every call in this same transaction.
-  let pos = tablePos + 2
-  let colCursor = 0
-  firstRow.forEach((cell) => {
-    const colspan = cell.attrs.colspan || 1
-    const slice = nextWidths.slice(colCursor, colCursor + colspan)
-    tr.setNodeMarkup(pos, undefined, { ...cell.attrs, colwidth: slice })
-    colCursor += colspan
-    pos += cell.nodeSize
+  rows.forEach(({ row, offset }) => {
+    const rowStart = tablePos + 1 + offset
+    let pos = rowStart + 1
+    let col = 0
+    row.forEach((cell) => {
+      const span = cell.attrs.colspan || 1
+      const slice = nextWidths.slice(col, col + span)
+      tr.setNodeMarkup(pos, undefined, { ...cell.attrs, colwidth: slice })
+      col += span
+      pos += cell.nodeSize
+    })
   })
+}
+
+/**
+ * Re-fit every table in the document to the CURRENT printable width.
+ *
+ * Column widths are absolute pixels, captured when the table was authored or imported, so
+ * they do not follow the page: widening the printable area (smaller margins, larger paper)
+ * left a table stranded at its old width with a growing white strip down one side, and the
+ * .docx/PDF exports inherited the same stranded numbers.
+ *
+ * A table that carries an explicit `tableWidthPct` keeps it — that is a deliberate choice
+ * from the Table size control. Everything else is fitted to the full width, which is what a
+ * page-geometry change implies.
+ *
+ * One transaction for the whole document, and attribute-only (`setNodeMarkup`) so no
+ * position shifts mid-walk. Tagged `skipTrackChanges` because re-fitting is layout
+ * bookkeeping, not an authored edit — it must never show up as a redline.
+ */
+export const refitTablesToPrintableWidth = (editor, pageSetup = null) => {
+  if (!editor || editor.isDestroyed) return false
+  // Printable width straight from the page geometry (twips), not from the DOM: 1 inch is
+  // 1440 twips and 96 CSS px, so px = twips / 15. Passing the just-chosen pageSetup makes
+  // the refit immune to when React gets around to painting the new margins.
+  let printableWidthPx = null
+  if (pageSetup?.size || pageSetup?.margins) {
+    const w = pageSetup?.size?.width ?? 11906
+    const left = pageSetup?.margins?.left ?? 1134
+    const right = pageSetup?.margins?.right ?? 1134
+    const twips = w - left - right
+    if (twips > 0) printableWidthPx = Math.round(twips / 15)
+  }
+  const { state, view } = editor
+  const tables = []
+  state.doc.descendants((node, pos) => {
+    if (node.type.name === 'table') {
+      tables.push({ node, pos })
+      return false // never recurse into a nested table: its parent cell governs its width
+    }
+    return true
+  })
+  if (!tables.length) return false
+
+  const tr = state.tr
+  tables.forEach(({ node, pos }) => {
+    const pct = node.attrs?.tableWidthPct
+    rescaleTableColumns(tr, pos, node, pct > 0 ? pct : 100, view, printableWidthPx)
+  })
+  if (!tr.docChanged) return false
+  tr.setMeta('skipTrackChanges', true)
+  tr.setMeta('addToHistory', false)
+  view.dispatch(tr)
+  return true
 }
 
 export const LegalTable = Table.extend({

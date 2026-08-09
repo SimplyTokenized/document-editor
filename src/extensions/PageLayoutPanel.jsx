@@ -83,29 +83,82 @@ const clampNum = (value, min, max) => {
   return Math.min(max, Math.max(min, n))
 }
 
-const NumberField = ({ id, label, value, min, max, step, suffix, onChange, disabled }) => (
-  <label className="legal-template-editor__layout-field" htmlFor={id}>
-    <span className="legal-template-editor__layout-field-label">{label}</span>
-    <span className="legal-template-editor__layout-field-input">
-      <input
-        id={id}
-        type="number"
-        value={value}
-        min={min}
-        max={max}
-        step={step}
-        disabled={disabled}
-        onChange={(e) => onChange(clampNum(e.target.value, min, max))}
+/**
+ * A number input that does not commit on every keystroke.
+ *
+ * These fields drive a live re-layout of the document, and committing per character meant
+ * typing "10" first applied "1": a 1%-wide table becomes enormously tall, the document
+ * reflows to many more pages, and the view jumps away from what you were looking at — then
+ * jumps back when the second digit arrives. The draft is held locally and committed once
+ * typing settles, or immediately on blur / Enter, so the document reflows once per intended
+ * value instead of once per character.
+ */
+const useDeferredCommit = (value, onChange, min, max) => {
+  const [draft, setDraft] = useState(() => String(value))
+  const committed = useRef(value)
+  const timer = useRef(null)
+
+  // Follow the value when it changes from outside (a preset, a reset, another table).
+  useEffect(() => {
+    if (value !== committed.current) {
+      committed.current = value
+      setDraft(String(value))
+    }
+  }, [value])
+
+  useEffect(() => () => window.clearTimeout(timer.current), [])
+
+  const commit = (raw) => {
+    window.clearTimeout(timer.current)
+    const next = clampNum(raw, min, max)
+    setDraft(String(next))
+    if (next !== committed.current) {
+      committed.current = next
+      onChange(next)
+    }
+  }
+
+  const onInput = (raw) => {
+    setDraft(raw)
+    window.clearTimeout(timer.current)
+    // Long enough to finish typing a two-digit number, short enough to still feel live.
+    timer.current = window.setTimeout(() => commit(raw), 450)
+  }
+
+  return { draft, onInput, commit }
+}
+
+const NumberField = ({ id, label, value, min, max, step, suffix, onChange, disabled }) => {
+  const { draft, onInput, commit } = useDeferredCommit(value, onChange, min, max)
+  return (
+    <label className="legal-template-editor__layout-field" htmlFor={id}>
+      <span className="legal-template-editor__layout-field-label">{label}</span>
+      <span className="legal-template-editor__layout-field-input">
+        <input
+          id={id}
+          type="number"
+          value={draft}
+          min={min}
+          max={max}
+          step={step}
+          disabled={disabled}
+          onChange={(e) => onInput(e.target.value)}
+          onBlur={(e) => commit(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              commit(e.currentTarget.value)
+            }
+          }}
         // Chrome (and other browsers) silently increment/decrement a focused number input on
-        // mouse-wheel scroll — e.g. scrolling the document to review content while this
-        // popover is open would otherwise drift the page size/margins without the author
-        // ever intending to change them. Blur on wheel so scrolling always just scrolls.
-        onWheel={(e) => e.currentTarget.blur()}
-      />
-      {suffix ? <span className="legal-template-editor__layout-suffix">{suffix}</span> : null}
-    </span>
-  </label>
-)
+        // mouse-wheel scroll — blur on wheel so scrolling always just scrolls.
+          onWheel={(e) => e.currentTarget.blur()}
+        />
+        {suffix ? <span className="legal-template-editor__layout-suffix">{suffix}</span> : null}
+      </span>
+    </label>
+  )
+}
 
 NumberField.propTypes = {
   id: PropTypes.string.isRequired,

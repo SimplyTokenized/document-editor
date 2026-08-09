@@ -407,22 +407,35 @@ function readPageSetup(body) {
   if (!sectPr) return null
   const pgSz = firstOf(sectPr, 'pgSz')
   const pgMar = firstOf(sectPr, 'pgMar')
+  // `getAttributeNS` returns null for an absent attribute, and `Number(null)` is 0 — which
+  // is finite. Reading the value straight through `Number()` therefore turned every MISSING
+  // margin into a hard 0 mm instead of leaving it unset, so the layout panel showed a
+  // confident "0" the source document never stated. Check for the absent value first.
   const num = (node, name) => {
-    const v = node && Number(wAttr(node, name))
+    if (!node) return null
+    const raw = wAttr(node, name)
+    if (raw == null || raw === '') return null
+    const v = Number(raw)
     return Number.isFinite(v) ? v : null
   }
-  const size =
-    pgSz && num(pgSz, 'w') && num(pgSz, 'h')
-      ? { width: num(pgSz, 'w'), height: num(pgSz, 'h') }
-      : null
+
+  // Truthiness would also drop a legitimate 0, and `w && h` discarded BOTH dimensions when
+  // only one was present. Compare against null explicitly.
+  const w = num(pgSz, 'w')
+  const h = num(pgSz, 'h')
+  const size = w != null && h != null ? { width: w, height: h } : null
+
+  // Only keys the document actually declares: the consumers merge this over the A4
+  // defaults, so an omitted key must stay omitted to inherit rather than force a zero.
   const margins = pgMar
-    ? {
-        top: num(pgMar, 'top'),
-        right: num(pgMar, 'right'),
-        bottom: num(pgMar, 'bottom'),
-        left: num(pgMar, 'left'),
-      }
+    ? Object.fromEntries(
+        ['top', 'right', 'bottom', 'left']
+          .map((side) => [side, num(pgMar, side)])
+          .filter(([, value]) => value != null),
+      )
     : null
-  if (!size && !margins) return null
-  return { size, margins }
+  const hasMargins = margins && Object.keys(margins).length > 0
+
+  if (!size && !hasMargins) return null
+  return { size, margins: hasMargins ? margins : null }
 }
