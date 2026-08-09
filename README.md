@@ -41,6 +41,45 @@ Styles are imported by the component itself (`contract-editor.scss` and
 `extensions/tiptap-styles.css`) — host apps do not need to import anything extra, but they
 do need `sass` available to their bundler.
 
+## Theming
+
+The editor ships a neutral light theme and reads every colour through a `--doc-editor-*`
+custom property. Redeclare any of them — on `:root`, or on any ancestor of the editor to
+scope it — and the editor re-skins. That is the whole contract; nothing else about the
+stylesheet is public.
+
+| Token | Used for |
+| --- | --- |
+| `--doc-editor-primary` / `-on-primary` | active toolbar buttons, links, focus rings, comment-card spine |
+| `--doc-editor-bg` / `-bg-muted` | toolbar, popovers, panels, comment cards |
+| `--doc-editor-fg` / `-fg-muted` | chrome text |
+| `--doc-editor-border` / `-border-subtle` | all chrome borders |
+| `--doc-editor-radius` / `-shadow` | chrome corner radius and popover shadow |
+| `--doc-editor-paper` / `-paper-fg` | the document sheet and its body text |
+| `--doc-editor-workspace` | the surface the sheet sits on |
+| `--doc-editor-page-guide` | the band drawn where a page would break |
+
+Each host maps its own palette in one block — see `src/index.css` in networkmanager and
+st-app-assetmanager, and `src/scss/style.scss` in st-networkmanager. Because those blocks
+are `var()` references rather than copied values, the editor follows a host's light/dark
+switch, and in networkmanager it also follows a network operator's live re-brand, with no
+coordination between the two sides.
+
+Two things are deliberate:
+
+- **The sheet is themed separately from the chrome.** All three apps leave
+  `--doc-editor-paper` at white with dark text even in dark mode, because the sheet is a
+  preview of a printed page. Point it at your background token only if you really want the
+  document itself to go dark — and move `-paper-fg` with it.
+- **Redline colours are not tokens.** Insertion, deletion and comment marks carry legal
+  meaning in a review, and a re-brand that recoloured them could make two states
+  indistinguishable. They stay fixed.
+
+Earlier versions read CoreUI's `--cui-*` variables directly, which meant the editor only
+themed itself inside the CoreUI app and silently fell back to hardcoded greys everywhere
+else. That coupling is gone: knowledge of CoreUI now lives in the CoreUI app's own
+stylesheet, alongside the equivalent mapping in each shadcn app.
+
 ## How apps link to it
 
 Each app declares it with yarn's `link:` protocol, which symlinks this working copy into

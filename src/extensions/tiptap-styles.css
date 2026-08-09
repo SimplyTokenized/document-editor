@@ -166,8 +166,8 @@
 .rich-text-editor [data-resize-handle] {
   width: 10px;
   height: 10px;
-  background: var(--cui-body-bg, #fff);
-  border: 2px solid var(--cui-primary, #321fdb);
+  background: var(--doc-editor-bg);
+  border: 2px solid var(--doc-editor-primary);
   border-radius: 2px;
   z-index: 10;
   pointer-events: auto;
@@ -189,7 +189,7 @@
 
 .cre-doc .ProseMirror-selectednode [data-resize-wrapper],
 .rich-text-editor .ProseMirror-selectednode [data-resize-wrapper] {
-  outline: 2px solid color-mix(in srgb, var(--cui-primary, #321fdb) 45%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--doc-editor-primary) 45%, transparent);
   border-radius: 0.25rem;
 }
 
