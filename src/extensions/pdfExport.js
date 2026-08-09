@@ -124,6 +124,69 @@ const BODY_CSS = `
 `
 
 /**
+ * Screen-only styling for the printable document, used when it is shown in an iframe as a
+ * preview. `@page` governs paper geometry when PRINTING and does nothing on screen, so
+ * without this the preview would render as one continuous column and look nothing like the
+ * PDF. Here the same page width and margins are reproduced as a centred white sheet on a
+ * grey backdrop, with a repeating band marking where each page ends.
+ *
+ * It is a faithful preview of geometry, not a paginator: the browser cannot reflow content
+ * onto discrete sheets on screen, so a block that straddles a break is drawn across the band
+ * rather than pushed to the next page the way the real print engine will.
+ */
+const screenCss = (pageSetup, marginsMm = {}) => {
+  const w = pageSetup?.size?.width
+  const h = pageSetup?.size?.height
+  const m = pageSetup?.margins || {}
+  const sideMm = (key, fallback) =>
+    Number.isFinite(marginsMm[key])
+      ? marginsMm[key]
+      : Number.isFinite(m[key])
+        ? m[key] / TWIPS_PER_MM
+        : fallback
+  const pageWmm = w ? w / TWIPS_PER_MM : 210
+  const pageHmm = h ? h / TWIPS_PER_MM : 297
+  const top = sideMm('top', 20)
+  const right = sideMm('right', 20)
+  const bottom = sideMm('bottom', 20)
+  const left = sideMm('left', 20)
+  // Height of one page's content box — where a break falls, measured from the sheet's top.
+  const contentHmm = Math.max(1, pageHmm - top - bottom)
+
+  return `
+  @media screen {
+    html { background: #f1f1f4; }
+    body { margin: 0; padding: 24px 0; }
+    .doc {
+      width: ${pageWmm}mm;
+      min-height: ${pageHmm}mm;
+      margin: 0 auto;
+      padding: ${top}mm ${right}mm ${bottom}mm ${left}mm;
+      background: #fff;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.08);
+      background-image: repeating-linear-gradient(
+        to bottom,
+        transparent 0,
+        transparent calc(${contentHmm}mm - 1px),
+        rgba(0,0,0,0.14) calc(${contentHmm}mm - 1px),
+        rgba(0,0,0,0.14) ${contentHmm}mm,
+        transparent ${contentHmm}mm
+      );
+      background-origin: content-box;
+      background-clip: content-box;
+      background-repeat: repeat-y;
+    }
+  }
+`
+}
+
+/**
+ * Build the exact self-contained HTML document the PDF is printed from — the content plus
+ * the print stylesheet and the @page rule derived from the document's own page setup.
+ *
+ * Exported so a host can render it in an iframe for a true "this is the PDF" preview,
+ * instead of approximating the paged output with app styles.
+ *
  * @param {string} html - the editor's serialized content (contract_content)
  * @param {object} [options]
  * @param {string} [options.title]
@@ -131,6 +194,26 @@ const BODY_CSS = `
  *   size + margins (twips) from the imported source so the PDF matches the source geometry.
  * @param {{top?:number,right?:number,bottom?:number,left?:number}} [options.marginsMm] -
  *   per-side page-margin overrides in mm (top defaults to DEFAULT_PDF_TOP_MM).
+ */
+export function buildPrintableDocument(
+  html,
+  { title = 'Contract', pageSetup, marginsMm = { top: DEFAULT_PDF_TOP_MM } } = {},
+) {
+  const css = `${pageRule(pageSetup, marginsMm)}\n${BODY_CSS}\n${screenCss(pageSetup, marginsMm)}`
+  const body = normalizeTablesForPrint(html)
+  return (
+    `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title>` +
+    `<style>${css}</style></head><body><div class="doc">${body}</div></body></html>`
+  )
+}
+
+/**
+ * Print (→ "Save as PDF") the document produced by buildPrintableDocument.
+ *
+ * There is no PDF blob anywhere in here: this hands the document to the browser's own print
+ * engine and the user picks the destination. That is also why an on-screen preview should
+ * render `buildPrintableDocument` rather than a separately-styled copy — same HTML, same
+ * stylesheet, same @page rule, so what the reader sees is what the PDF will be.
  */
 export function exportHtmlToPdf(
   html,
@@ -149,14 +232,9 @@ export function exportHtmlToPdf(
   })
   document.body.appendChild(iframe)
 
-  const css = `${pageRule(pageSetup, marginsMm)}\n${BODY_CSS}`
-  const body = normalizeTablesForPrint(html)
   const doc = iframe.contentDocument
   doc.open()
-  doc.write(
-    `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title>` +
-      `<style>${css}</style></head><body><div class="doc">${body}</div></body></html>`,
-  )
+  doc.write(buildPrintableDocument(html, { title, pageSetup, marginsMm }))
   doc.close()
 
   const cleanup = () => {

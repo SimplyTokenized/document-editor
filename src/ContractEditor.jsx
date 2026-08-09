@@ -947,13 +947,6 @@ const DocumentActionsBar = ({
           escalating scope. Keeping them adjacent is what makes the bar read as zones:
           document identity on the left, host workflow in the middle, view at the end —
           instead of view controls scattered through the bar. */}
-      <ToolbarButton
-        title={isFullscreen ? labels.exitFullscreen : labels.enterFullscreen}
-        active={isFullscreen}
-        onClick={onToggleFullscreen}
-      >
-        <span className="rich-text-editor__icon-fullscreen" aria-hidden="true" />
-      </ToolbarButton>
       {/* Page & layout is deliberately NOT inside a bordered toolbar-group: the group's
           `overflow: hidden` (which clips its children's corners) would also clip the
           popover this trigger opens — the panel renders but is invisible. */}
@@ -991,6 +984,15 @@ const DocumentActionsBar = ({
           <span className="rich-text-editor__icon-zoom-in" aria-hidden="true" />
         </ToolbarButton>
       </div>
+      {/* Last control in the bar: it acts on the editor as a whole, not on the document, so
+          it sits past everything that changes the document's own presentation. */}
+      <ToolbarButton
+        title={isFullscreen ? labels.exitFullscreen : labels.enterFullscreen}
+        active={isFullscreen}
+        onClick={onToggleFullscreen}
+      >
+        <span className="rich-text-editor__icon-fullscreen" aria-hidden="true" />
+      </ToolbarButton>
     </div>
   )
 }
