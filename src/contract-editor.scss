@@ -1406,3 +1406,43 @@
     }
   }
 }
+
+// ---------------------------------------------------------------------------
+// Placeholder / signature tokens (see extensions/tokenHighlight.js)
+// ---------------------------------------------------------------------------
+// These sit ON the paper, which stays white even when the host app is dark, so
+// they carry fixed colours rather than theme tokens — the same reasoning the
+// redline marks above are fixed for: the tint is the meaning. A merge field is a
+// value that drops in when the document is generated; a signature anchor is a box
+// somebody signs. Telling those two apart at a glance is the whole point, so they
+// must never converge on a re-brand.
+//
+// Applied as ProseMirror decorations, never written into the document, so nothing
+// here reaches the saved HTML, the .docx export or the PDF.
+.legal-token {
+  border-radius: 0.25rem;
+  padding: 0.05em 0.25em;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.92em;
+  // A token is one unit: breaking `{{sign:client.signature}}` across two lines
+  // reads as two broken tokens.
+  white-space: nowrap;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+// Indigo: a value arrives here later.
+.legal-token--merge {
+  background: #eef0fb;
+  color: #3b3a99;
+  border: 1px solid #d4d8f4;
+}
+
+// Amber, and heavier: this one needs a human. A signature field that silently
+// failed to register should look obviously different from one that took.
+.legal-token--signature {
+  background: #fdf3e0;
+  color: #8a5a08;
+  border: 1px solid #f0d9a8;
+  font-weight: 600;
+}

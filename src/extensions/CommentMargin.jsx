@@ -571,7 +571,10 @@ const CommentMargin = ({
                   </button>
                 </span>
               ) : null}
-              {/* Lawyer reviewing the lawyer's OWN tracked edit → Revert only. */}
+              {/* Lawyer reviewing their OWN tracked edit → Revert it, or Accept to settle it.
+                  Revert alone was a dead end: the lawyer could undo their edit but never
+                  finalise it, so their own redline stayed in the document with no way to
+                  resolve it before signing off. Accept keeps the text and drops the mark. */}
               {mode === 'lawyer' && isOwnEdit && !isCommentOnly ? (
                 <span className="legal-comment-card__actions">
                   <button
@@ -585,6 +588,17 @@ const CommentMargin = ({
                     }}
                   >
                     {labels.revert}
+                  </button>
+                  <button
+                    type="button"
+                    className="legal-comment-card__btn legal-comment-card__btn--accept"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      acceptCombined(editor, card)
+                      forceTick()
+                    }}
+                  >
+                    {labels.accept}
                   </button>
                 </span>
               ) : null}

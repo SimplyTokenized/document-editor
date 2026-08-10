@@ -29,6 +29,8 @@ export { parsePageSetupMarker, withPageSetupMarker } from './extensions/pageSetu
 export { TrackChangesExtension } from './extensions/TrackChangesExtension.js'
 export { InsertionMark, DeletionMark } from './extensions/trackChangeMarks.js'
 export { CommentMark } from './extensions/CommentMark.js'
+// Display-only chips for `{{merge_field}}` / `{{sign:role.type}}` tokens.
+export { TokenHighlight } from './extensions/tokenHighlight.js'
 export { getAuthorColorIndex } from './extensions/authorColors.js'
 export * from './extensions/trackChangesUtils.js'
 export * from './extensions/changeCommentEditor.js'

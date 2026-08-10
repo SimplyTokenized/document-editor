@@ -35,6 +35,7 @@ import LegalTable, { refitTablesToPrintableWidth } from './extensions/legalTable
 import PageLayoutPanel, { buildLayoutVars } from './extensions/PageLayoutPanel.jsx'
 import TablePropertiesPanel from './extensions/TablePropertiesPanel.jsx'
 import { parsePageSetupMarker, withPageSetupMarker } from './extensions/pageSetupMarker.js'
+import { TokenHighlight } from './extensions/tokenHighlight.js'
 import {
   LegalDocumentImage,
   isLegalContentAlignActive,
@@ -770,6 +771,9 @@ const buildExtensions = (placeholder, trackChanges) => {
     LegalTableHeader,
     LegalTableCell,
     LegalListNesting,
+    // Display-only, so it applies in template and redline mode alike: it tints
+    // `{{…}}` tokens in the view and never touches the stored HTML.
+    TokenHighlight,
     ...(redline
       ? [
           InsertionMark,
@@ -1222,6 +1226,12 @@ const TipTapEditor = ({
     // this same parsing + guard logic.
     const parsed = parsePageSetupMarker(content || '')
     applyEditorContent(editor, parsed.html, { skipTracking: Boolean(trackChanges?.enabled) })
+    // Repair-only pass: a saved document can carry a table wider than its own printable
+    // width (the page marker and the table widths are saved together but can be captured
+    // out of sync), and CSS cannot cap it — a fixed-layout table's colgroup beats
+    // max-width, so it visibly spills off the paper's edge. Clamp such tables back to the
+    // printable width; tables that fit are never touched.
+    refitTablesToPrintableWidth(editor, parsed.pageSetup, { onlyOverflowing: true })
     lastEmittedHtmlRef.current = content
     pageSetupRef.current = parsed.pageSetup
     // eslint-disable-next-line react-hooks/set-state-in-effect -- see comment above
@@ -1233,6 +1243,9 @@ const TipTapEditor = ({
   // the effect above only fires on later external `content` prop changes.
   useEffect(() => {
     if (!editor) return
+    // Same repair-only clamp as the external-content effect, for the INITIAL content the
+    // editor was created with (that effect only fires on later prop changes).
+    refitTablesToPrintableWidth(editor, pageSetupRef.current, { onlyOverflowing: true })
     scheduleAutoFitZoom()
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot on editor creation only
   }, [editor])
