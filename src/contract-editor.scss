@@ -1446,3 +1446,123 @@
   border: 1px solid #f0d9a8;
   font-weight: 600;
 }
+
+// Red, and struck through: this token matches no known placeholder, so at
+// generation time it substitutes to nothing and the clause reads as a finished
+// sentence with a word missing. That is invisible later and obvious here, which
+// is the whole reason for the style. Overrides .legal-token--merge, so it must
+// follow it.
+.legal-token--unknown {
+  background: #fdecec;
+  color: #a3262c;
+  border: 1px solid #f2c2c4;
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
+// Server-rendered PDF preview. Deliberately plain chrome: the interesting
+// surface is the browser's PDF viewer inside the frame, and a styled wrapper
+// around it only competes with the document.
+.legal-pdf-preview {
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--legal-editor-border, #e2e8f0);
+  border-radius: 0.5rem;
+  background: var(--legal-editor-bg, #fff);
+}
+
+.legal-pdf-preview__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--legal-editor-border, #e2e8f0);
+  background: var(--legal-editor-muted, #f8fafc);
+}
+
+.legal-pdf-preview__frame {
+  width: 100%;
+  border: 0;
+  display: block;
+}
+
+.legal-pdf-preview__state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.875rem;
+  color: var(--legal-editor-muted-fg, #64748b);
+}
+
+// Repeating passages — a block the assembler emits once per selected answer.
+//
+// Marked with a left rule rather than a tint: this wraps whole paragraphs,
+// sometimes a heading and several of them, and a background across that much
+// text turns a contract into a highlighter test. The rule says "this is one
+// unit that repeats" without competing with the words.
+.legal-repeat {
+  position: relative;
+  margin: 0.5rem 0;
+  padding-left: 0.75rem;
+  border-left: 3px solid #b7a4d8;
+}
+
+.legal-repeat::before {
+  content: "↻";
+  position: absolute;
+  left: -0.55rem;
+  top: -0.1rem;
+  font-size: 0.7rem;
+  line-height: 1;
+  color: #6b53a0;
+  background: #fff;
+  padding: 0.1rem 0;
+}
+
+// Conditional passages — text that lands in the generated document only when
+// its condition holds.
+//
+// UNLIKE .legal-token above, this IS written into the saved HTML: the backend
+// reads the span to decide whether the text belongs in a given tenant's
+// document. Export unwraps it, so nothing here reaches a .docx or PDF.
+//
+// Deliberately quiet — an underline and a tint, no chrome. A conditional clause
+// is normal prose that happens to be conditional, and a lawyer reads whole
+// paragraphs of it; anything louder turns a contract into a highlighter test.
+.legal-conditional {
+  background: #edf7f0;
+  border-bottom: 1px dashed #6aa583;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+
+  // Nested conditions deepen rather than stack borders, so "for consumers, [in
+  // Austria] …" reads as one passage containing another.
+  .legal-conditional {
+    background: #dff0e6;
+  }
+}
+
+// A host panel living inside the editor chrome, beside the paper — the same
+// place the comment margin occupies, for the same reason: a tool that belongs
+// to the document should not sit outside the thing it belongs to.
+.legal-template-editor__body {
+  display: flex;
+  align-items: stretch;
+  min-height: 0;
+  flex: 1;
+
+  .legal-template-editor__scroll {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+.legal-template-editor__side-panel {
+  width: 340px;
+  flex: 0 0 340px;
+  border-left: 1px solid var(--legal-editor-border, #e2e8f0);
+  overflow-y: auto;
+  background: var(--legal-editor-chrome-bg, #fbfcfe);
+}

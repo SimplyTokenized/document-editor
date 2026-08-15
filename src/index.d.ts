@@ -67,6 +67,63 @@ export interface ContractEditorProps {
    * distributes, rather than a second renderer's approximation of it.
    */
   onExportPdf?: () => void
+  /**
+   * Enables `{{` type-ahead. The editor reports where the cursor is and what has been
+   * typed since `{{`; the HOST renders the menu and decides what is in it — the same
+   * split as `insertExtras`, since this package knows nothing about merge fields.
+   *
+   * Pass STABLE function identities. The plugin is configured once, when the editor is
+   * created, and will not pick up new closures on re-render.
+   */
+  /**
+   * Every merge field the host recognises, in canonical form
+   * (`['{{offering.asset_name}}', '{{wizard.country}}']`). Tokens outside the
+   * list render as unknown, so a typo is visible while it can still be fixed
+   * rather than at generation time, when it substitutes to nothing and leaves a
+   * finished-looking sentence with a word missing.
+   *
+   * Omit it and NOTHING is marked unknown — a host that has not said what
+   * exists must not have its authors' correct tokens flagged as mistakes.
+   * Signature anchors are never checked: their roles are bound later, by
+   * whichever flow sends the envelope.
+   *
+   * Re-read whenever the array's contents change, so it may be built inline.
+   */
+  knownTokens?: string[]
+  placeholderSuggestion?: {
+    onStateChange?: (state: PlaceholderSuggestionState) => void
+    /** Return true when the host's popup consumed the key (arrows, Enter, Escape). */
+    onKeyDown?: (event: KeyboardEvent) => boolean
+  }
+  /**
+   * Host tools rendered into the SELECTION bubble menu, beside bold and italic.
+   *
+   * Distinct from `insertExtras`, which lives in the fixed toolbar and acts at
+   * the cursor. This is for anything that acts ON the selected words — the menu
+   * is already under the cursor at the moment the author has made a selection,
+   * so a gesture that needs one belongs here rather than back up in the toolbar.
+   * Pass JSX.
+   */
+  selectionExtras?: unknown
+  /**
+   * A panel rendered INSIDE the editor chrome, beside the paper — the same
+   * place the comment margin occupies. For tools that belong to the document
+   * being edited and would otherwise float next to the editor as a separate
+   * box, which reads as a different thing rather than part of this one.
+   * Pass JSX.
+   */
+  sidePanel?: unknown
+}
+
+export interface PlaceholderSuggestionState {
+  active: boolean
+  /** What has been typed after `{{`. */
+  query: string
+  /** Document positions of the in-progress token, for `completePlaceholder`. */
+  range: { from: number; to: number } | null
+  /** Viewport coordinates of the trigger, for anchoring a popup. Null when the
+   *  position is momentarily not resolvable — anchor on the editor instead. */
+  rect: { top: number; bottom: number; left: number; right: number } | null
 }
 
 /**
@@ -91,4 +148,45 @@ export const TrackChangesExtension: unknown
 export const InsertionMark: unknown
 export const DeletionMark: unknown
 export const CommentMark: unknown
+/**
+ * Marks a passage as conditional. Unlike the `{{…}}` token highlight, this one
+ * IS written into the saved HTML — the backend reads the span to decide whether
+ * the text belongs in a given tenant's document — so export must unwrap it and a
+ * token must never straddle a span boundary.
+ *
+ * Commands: `setConditionalText({condition, note})`, `toggleConditionalText(…)`,
+ * `unsetConditionalText()`. `condition` is an opaque string the host writes and
+ * evaluates; this package assigns it no meaning.
+ */
+export const ConditionalText: unknown
+
+/**
+ * Node wrapping block content that is emitted ONCE PER SELECTED ANSWER.
+ *
+ * Commands: `setRepeatBlock({factKey, note})`, `updateRepeatBlock(…)`,
+ * `unsetRepeatBlock()`. `factKey` is opaque here — the host writes it and the
+ * host (and backend) resolve it against a run's answers.
+ *
+ * A node rather than a mark because the content is copied whole; a mark
+ * describes inline text and has no body to duplicate.
+ */
+/**
+ * The document as a real, server-rendered PDF in the browser's own viewer.
+ *
+ * The host supplies `fetchPdf` (endpoint, auth, which document); the package
+ * owns the object-URL lifecycle, the cancelled-response race and the three
+ * states. Keep `fetchPdf` stable — it is an effect dependency.
+ */
+export const DocumentPdfPreview: (props: {
+  fetchPdf: () => Promise<Blob>
+  height?: number | string
+  labels?: { title?: string; loading?: string; error?: string }
+  toolbar?: unknown
+  className?: string
+}) => unknown
+
+export const RepeatBlock: unknown
+export const REPEAT_BLOCK_ATTR: string
+export const CONDITIONAL_TEXT_ATTR: string
+export const PlaceholderSuggestion: unknown
 export function getAuthorColorIndex(...args: unknown[]): number

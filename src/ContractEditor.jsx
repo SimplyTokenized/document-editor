@@ -36,6 +36,9 @@ import PageLayoutPanel, { buildLayoutVars } from './extensions/PageLayoutPanel.j
 import TablePropertiesPanel from './extensions/TablePropertiesPanel.jsx'
 import { parsePageSetupMarker, withPageSetupMarker } from './extensions/pageSetupMarker.js'
 import { TokenHighlight } from './extensions/tokenHighlight.js'
+import { ConditionalText } from './extensions/conditionalText.js'
+import { RepeatBlock } from './extensions/repeatBlock.js'
+import { PlaceholderSuggestion } from './extensions/placeholderSuggestion.js'
 import {
   LegalDocumentImage,
   isLegalContentAlignActive,
@@ -675,7 +678,12 @@ TipTapMenuBar.propTypes = {
   insertExtras: PropTypes.node,
 }
 
-const TipTapBubbleMenu = () => {
+/**
+ * @param {{ selectionExtras?: unknown }} props host tools shown on selection —
+ *   the natural home for anything that acts ON the selected words, since the
+ *   menu is already under the cursor when the author has just made one.
+ */
+const TipTapBubbleMenu = ({ selectionExtras }) => {
   const { editor, setLink } = useEditorCommands()
   const state = useTiptapState(selectToolbarState)
 
@@ -700,6 +708,7 @@ const TipTapBubbleMenu = () => {
           <span className="rich-text-editor__icon-highlight" aria-hidden="true" />
         </ToolbarButton>
       </div>
+      {selectionExtras ? <div className="rich-text-editor__toolbar-group">{selectionExtras}</div> : null}
     </BubbleMenu>
   )
 }
@@ -724,7 +733,7 @@ const LegalListNesting = Extension.create({
  *   for tracked deletions) and re-added for `<s>`/`<strike>` only, plus the insertion /
  *   deletion / comment marks and the TrackChangesExtension. Off (template mode) → plain edit.
  */
-const buildExtensions = (placeholder, trackChanges) => {
+const buildExtensions = (placeholder, trackChanges, placeholderSuggestion, knownTokens) => {
   const redline = Boolean(trackChanges?.enabled)
   return [
     // StarterKit (v3.28) now bundles Link + Underline. We register our own configured
@@ -773,7 +782,14 @@ const buildExtensions = (placeholder, trackChanges) => {
     LegalListNesting,
     // Display-only, so it applies in template and redline mode alike: it tints
     // `{{…}}` tokens in the view and never touches the stored HTML.
-    TokenHighlight,
+    TokenHighlight.configure({ knownTokens: knownTokens ?? null }),
+    // Stored markup, unlike TokenHighlight: the backend reads these spans to
+    // decide whether the text inside belongs in a given tenant's document.
+    ConditionalText,
+    // Same bargain one level up — a block the assembler COPIES, once per
+    // selected answer. A node, not a mark: the content is duplicated whole.
+    RepeatBlock,
+    ...(placeholderSuggestion ? [PlaceholderSuggestion.configure(placeholderSuggestion)] : []),
     ...(redline
       ? [
           InsertionMark,
@@ -1057,6 +1073,10 @@ const TipTapEditor = ({
   insertExtras,
   titleSlot,
   onExportPdf,
+  placeholderSuggestion,
+  knownTokens,
+  selectionExtras,
+  sidePanel,
 }) => {
   const labels = { ...DEFAULT_LABELS, ...labelsProp }
   const lastEmittedHtmlRef = useRef(content ?? '')
@@ -1172,7 +1192,7 @@ const TipTapEditor = ({
   }, [isFullscreen])
 
   const editor = useEditor({
-    extensions: buildExtensions(placeholder, trackChanges),
+    extensions: buildExtensions(placeholder, trackChanges, placeholderSuggestion, knownTokens),
     // The editor itself only ever sees the HTML — the page-setup marker is stripped here
     // and re-attached on every emit.
     content: parsePageSetupMarker(content).html,
@@ -1210,6 +1230,18 @@ const TipTapEditor = ({
     lastEmittedHtmlRef.current = html
     onChange?.(html)
   }
+
+  // The vocabulary grows while the author works — every question written adds a
+  // `{{wizard.<factKey>}}`, every rename changes one — but extensions are
+  // configured once, at creation. Without this the list would be frozen at
+  // mount and a token the author just made valid would keep rendering as a
+  // mistake. Compared by value: hosts build this array inline.
+  const knownTokensKey = Array.isArray(knownTokens) ? knownTokens.join('\u0000') : ''
+  useEffect(() => {
+    if (!editor) return
+    editor.commands.setKnownTokens(Array.isArray(knownTokens) ? knownTokens : null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by value, not identity
+  }, [editor, knownTokensKey])
 
   useEffect(() => {
     if (!editor || content === undefined) return
@@ -1362,6 +1394,7 @@ const TipTapEditor = ({
             }
           />
         )}
+        <div className="legal-template-editor__body">
         <div className="legal-template-editor__scroll" ref={scrollRef}>
           <Tiptap.Content className="rich-text-editor__content" />
           {commentPanelActive && (
@@ -1377,7 +1410,9 @@ const TipTapEditor = ({
             />
           )}
         </div>
-        {editable !== false && <TipTapBubbleMenu />}
+        {sidePanel ? <div className="legal-template-editor__side-panel">{sidePanel}</div> : null}
+        </div>
+        {editable !== false && <TipTapBubbleMenu selectionExtras={selectionExtras} />}
       </Tiptap>
       <div className="legal-template-editor__wordcount">
         {counts.words} {labels.words} · {counts.characters} {labels.characters}
@@ -1431,6 +1466,17 @@ TipTapEditor.propTypes = {
   // Replaces the built-in browser-print PDF export. Pass this when the host renders PDFs
   // itself (e.g. server-side) so export matches the document it actually distributes.
   onExportPdf: PropTypes.func,
+  /** Enables `{{` type-ahead. Pass STABLE function identities — the plugin is
+   *  configured once when the editor is created and does not re-read new closures. */
+  knownTokens: PropTypes.arrayOf(PropTypes.string),
+  placeholderSuggestion: PropTypes.shape({
+    onStateChange: PropTypes.func,
+    onKeyDown: PropTypes.func,
+  }),
+  /** Host tools rendered into the selection bubble menu. Pass JSX. */
+  selectionExtras: PropTypes.node,
+  /** Panel rendered inside the editor chrome, beside the paper. */
+  sidePanel: PropTypes.node,
 }
 
 export default TipTapEditor
