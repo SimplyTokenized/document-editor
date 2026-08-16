@@ -76,6 +76,30 @@
     padding: 0.5rem 0.75rem;
     border-bottom: 1px solid var(--doc-editor-border);
     background: var(--doc-editor-bg);
+
+    // On a phone the same ten groups wrap onto eight rows — 370px of chrome
+    // above a 812px screen, so the document started below the fold on a page
+    // whose entire purpose is the document. One swipeable strip instead, the
+    // pattern every mobile editor uses: nothing is removed, it moves sideways.
+    @media (max-width: 767.98px) {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      overscroll-behavior-x: contain;
+
+      > * {
+        flex: 0 0 auto;
+      }
+
+      // Every other control in the strip opens its menu through a portal, so a
+      // scroll container cannot clip it. This one anchors its panel inline and
+      // would be cut off — and its job, picking a table's size off a grid, is
+      // already covered by the "Insert table" button that stays. Scoped to the
+      // formatting bar so the identically-classed page & layout tool in the
+      // doc-actions bar above is untouched.
+      > .legal-template-editor__layout {
+        display: none;
+      }
+    }
   }
 
   &__toolbar-group {
@@ -1557,6 +1581,23 @@
     flex: 1;
     min-width: 0;
   }
+
+  // Below the breakpoint there is no room for a 340px rail BESIDE the paper:
+  // the paper is `flex: 1` against a fixed-basis sibling in a row that never
+  // wraps, so on a phone it resolved to zero width and the document vanished
+  // entirely — the editor opened as a toolbar above a blank sliver, with the
+  // panel's own toggle the only way back and nothing to say so. Stack instead,
+  // the way the comment margin already does at this width: paper first, panel
+  // beneath it.
+  @media (max-width: 767.98px) {
+    flex-direction: column;
+
+    .legal-template-editor__scroll {
+      // Column direction makes height the constrained axis, so the paper needs
+      // the same escape from min-content that `min-width` gave it in a row.
+      min-height: 0;
+    }
+  }
 }
 
 .legal-template-editor__side-panel {
@@ -1565,4 +1606,15 @@
   border-left: 1px solid var(--legal-editor-border, #e2e8f0);
   overflow-y: auto;
   background: var(--legal-editor-chrome-bg, #fbfcfe);
+
+  // Stacked under the paper (see `__body`): full width, capped so it can never
+  // push the document off-screen again, and its divider moves to the top edge
+  // where the panel now meets the paper.
+  @media (max-width: 767.98px) {
+    width: auto;
+    flex: 0 0 auto;
+    max-height: 60vh;
+    border-left: 0;
+    border-top: 1px solid var(--legal-editor-border, #e2e8f0);
+  }
 }
