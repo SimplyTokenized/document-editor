@@ -176,6 +176,9 @@ export const ConditionalText: unknown
  * The host supplies `fetchPdf` (endpoint, auth, which document); the package
  * owns the object-URL lifecycle, the cancelled-response race and the three
  * states. Keep `fetchPdf` stable — it is an effect dependency.
+ *
+ * Returns `any` for the same reason `ContractEditor` above does: pinning to
+ * one `@types/react` major breaks as a JSX element type for a host on another.
  */
 export const DocumentPdfPreview: (props: {
   fetchPdf: () => Promise<Blob>
@@ -183,7 +186,7 @@ export const DocumentPdfPreview: (props: {
   labels?: { title?: string; loading?: string; error?: string }
   toolbar?: unknown
   className?: string
-}) => unknown
+}) => any
 
 export const RepeatBlock: unknown
 export const REPEAT_BLOCK_ATTR: string
