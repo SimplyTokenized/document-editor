@@ -1238,13 +1238,21 @@ const TipTapEditor = ({
   // mistake. Compared by value: hosts build this array inline.
   const knownTokensKey = Array.isArray(knownTokens) ? knownTokens.join('\u0000') : ''
   useEffect(() => {
-    if (!editor) return
+    // `isDestroyed`, not just `!editor`: under StrictMode React mounts, tears
+    // down and remounts effects, and TipTap destroys the editor in between.
+    // This effect still holds that instance — truthy, but with its view and
+    // state already gone — and TipTap's `commands` getter dereferences them,
+    // throwing "Cannot read properties of null (reading 'commands')" out of an
+    // effect, where nothing catches it. That takes the whole page down: the
+    // host's review screen rendered as a blank white document.
+    if (!editor || editor.isDestroyed) return
     editor.commands.setKnownTokens(Array.isArray(knownTokens) ? knownTokens : null)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by value, not identity
   }, [editor, knownTokensKey])
 
   useEffect(() => {
-    if (!editor || content === undefined) return
+    // Same StrictMode teardown guard as the `setKnownTokens` effect above.
+    if (!editor || editor.isDestroyed || content === undefined) return
     // Skip echo from our own onUpdate — resetting here collapses blank lines.
     if (content === lastEmittedHtmlRef.current) return
     // While typing, the parent may lag one frame behind the editor.
@@ -1274,7 +1282,9 @@ const TipTapEditor = ({
   // Same one-shot fit check the moment the editor first mounts with its initial content —
   // the effect above only fires on later external `content` prop changes.
   useEffect(() => {
-    if (!editor) return
+    // Same StrictMode teardown guard as the effects above — `refitTables…`
+    // reads `editor.state`, which is gone on a destroyed instance.
+    if (!editor || editor.isDestroyed) return
     // Same repair-only clamp as the external-content effect, for the INITIAL content the
     // editor was created with (that effect only fires on later prop changes).
     refitTablesToPrintableWidth(editor, pageSetupRef.current, { onlyOverflowing: true })

@@ -27,11 +27,33 @@ export const placeholderSuggestionKey = new PluginKey('placeholderSuggestion')
  *  same line cannot re-trigger the menu. */
 const TRIGGER = /\{\{([a-zA-Z0-9_.:]*)$/
 
+/**
+ * The tail of a token the cursor is sitting INSIDE.
+ *
+ * `TRIGGER` only ever looks backwards, so putting the caret in the middle of a
+ * finished field — clicking `{{wizard.adsf|asdf}}` to read what it is — looks
+ * exactly like someone who has just typed `{{wizard.adsf`. The menu opened, and
+ * choosing from it replaced the part before the caret only: the token became
+ * `{{wizard.adsfasdf}}asdf}}` and the merge field was destroyed by the act of
+ * looking at it.
+ *
+ * So the text AFTER the caret decides. If it finishes the token and closes it,
+ * the author is editing an existing field, not writing a new one, and there is
+ * nothing here to complete.
+ */
+const INSIDE_CLOSED_TOKEN = /^[a-zA-Z0-9_.:]*\}\}/
+
 /** Reads the text of the current block up to the cursor. */
 const textBeforeCursor = (state) => {
   const { $from, empty } = state.selection
   if (!empty) return null
   return $from.parent.textBetween(0, $from.parentOffset, undefined, '￼')
+}
+
+/** Reads the rest of the current block, from the cursor on. */
+const textAfterCursor = (state) => {
+  const { $from } = state.selection
+  return $from.parent.textBetween($from.parentOffset, $from.parent.content.size, undefined, '￼')
 }
 
 export const PlaceholderSuggestion = Extension.create({
@@ -83,8 +105,12 @@ export const PlaceholderSuggestion = Extension.create({
 
               const text = textBeforeCursor(view.state)
               const match = text === null ? null : TRIGGER.exec(text)
+              // A caret parked inside a finished token is not a half-typed one.
+              // See `INSIDE_CLOSED_TOKEN`.
+              const editingExisting =
+                match !== null && INSIDE_CLOSED_TOKEN.test(textAfterCursor(view.state))
 
-              if (!match) {
+              if (!match || editingExisting) {
                 if (previous.active) {
                   previous = { active: false, query: '' }
                   notify({ active: false, query: '', range: null, rect: null })
