@@ -1218,7 +1218,8 @@ const TipTapEditor = ({
   const handlePageSetup = (next) => {
     pageSetupRef.current = next
     setPageSetup(next)
-    if (!editor) return
+    // `isDestroyed`, not just `!editor` — see the `setEditable` effect below.
+    if (!editor || editor.isDestroyed) return
 
     // Tables hold absolute pixel column widths, so a page that just got wider or narrower
     // leaves them at their old size — a white strip down one side that no margin setting can
@@ -1293,13 +1294,27 @@ const TipTapEditor = ({
   }, [editor])
 
   useEffect(() => {
-    if (editor) {
-      editor.setEditable(editable !== false)
-    }
+    // The same teardown guard as the effects above, and the one that was
+    // missing. `setEditable` re-emits `update`, whose listeners reach
+    // `editor.commands` — a getter that dereferences a null commandManager once
+    // TipTap has destroyed the instance, throwing "Cannot read properties of
+    // null (reading 'commands')" out of an effect where nothing catches it and
+    // taking the whole React root down with it.
+    //
+    // This is the effect that fires exactly when a document review moves from
+    // ACCEPTED to IN REVIEW: `editable` flips false -> true on a tree that has
+    // just remounted, so the destroyed instance and the new prop meet here. The
+    // lawyer's console went white; the status transition had already saved, so
+    // a reload brought it back — with nothing on screen to say so.
+    if (!editor || editor.isDestroyed) return
+    editor.setEditable(editable !== false)
   }, [editor, editable])
 
   useEffect(() => {
-    onEditorReady?.(editor || null)
+    // A destroyed instance is worth no more to the host than none at all: hosts
+    // store what they are handed in state and call it later, and every such
+    // call would throw the same way. Hand up null instead.
+    onEditorReady?.(editor && !editor.isDestroyed ? editor : null)
     return () => onEditorReady?.(null)
   }, [editor, onEditorReady])
 
