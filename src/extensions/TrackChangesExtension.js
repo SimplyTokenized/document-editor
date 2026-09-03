@@ -217,15 +217,18 @@ export const TrackChangesExtension = Extension.create({
             if (blockChange?.type) {
               blockClears.push(pos)
             }
-            if (!node.isText) return
             const hasInsertion = node.marks.some((m) => m.type === insertionMark)
             const hasDeletion = node.marks.some((m) => m.type === deletionMark)
-
-            if (hasInsertion) {
-              tr = tr.removeMark(pos, pos + node.nodeSize, insertionMark)
-            }
-            if (hasDeletion) {
-              deletionRanges.push({ from: pos, to: pos + node.nodeSize })
+            if (!hasInsertion && !hasDeletion) return
+            // Text and inline atoms (hardBreak): blank deleted lines were left as
+            // `<del><br>…</del>` because the old guard skipped non-text nodes.
+            if (node.isText || node.isInline) {
+              if (hasInsertion) {
+                tr = tr.removeMark(pos, pos + node.nodeSize, insertionMark)
+              }
+              if (hasDeletion) {
+                deletionRanges.push({ from: pos, to: pos + node.nodeSize })
+              }
             }
           })
 

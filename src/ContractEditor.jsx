@@ -58,7 +58,21 @@ const Spinner = () => <span className="contract-editor__spinner" aria-hidden="tr
  * programmatic content set (external sync / .docx import) as one giant insertion. In template
  * mode it's an ordinary setContent.
  */
+/** TipTap nulls `commandManager` on destroy; `isDestroyed` alone is not enough
+ *  under StrictMode remounts — accessing `.commands` then throws and takes the
+ *  host page down (tax certificate Edit is the usual path).
+ *  Also treat the internal `destroyed` flag (set at the start of `destroy()`)
+ *  as authoritative: `isDestroyed` only mirrors `editorView`, which can lag. */
+const editorCanCommand = (editor) =>
+  Boolean(
+    editor &&
+      !editor.destroyed &&
+      !editor.isDestroyed &&
+      editor.commandManager,
+  )
+
 const applyEditorContent = (editor, html, { skipTracking = false, emitUpdate = false } = {}) => {
+  if (!editorCanCommand(editor)) return
   const safeHtml = html || '<p></p>'
   if (!skipTracking) {
     editor.commands.setContent(safeHtml, { emitUpdate })
@@ -290,10 +304,10 @@ const selectToolbarState = (ctx) => {
   // A DESTROYED editor is not a null editor: `useEditorState` can run this
   // selector once more after the instance has been torn down (a consumer
   // remounting the editor via `key`, or unmounting it while the toolbar is
-  // still subscribed). The object is still there, but its view and state are
-  // null, so `editor.can()` dereferences null and takes the whole React root
-  // down. Treat destroyed exactly like absent.
-  if (!ctx.editor || ctx.editor.isDestroyed) return EMPTY_TOOLBAR_STATE
+  // still subscribed). The object is still there, but `commandManager` is
+  // already null, so `editor.can()` / `.commands` throws and takes the whole
+  // React root down. Treat destroyed exactly like absent.
+  if (!editorCanCommand(ctx.editor)) return EMPTY_TOOLBAR_STATE
   return {
     isBold: ctx.editor.isActive('bold'),
     isItalic: ctx.editor.isActive('italic'),
@@ -324,7 +338,7 @@ const useEditorCommands = () => {
   const { editor } = useTiptap()
 
   const setLink = () => {
-    if (!editor) return
+    if (!editorCanCommand(editor)) return
     const previousUrl = editor.getAttributes('link').href
     const url = window.prompt('Enter URL', previousUrl || 'https://')
     if (url === null) return
@@ -336,7 +350,7 @@ const useEditorCommands = () => {
   }
 
   const addImage = () => {
-    if (!editor) return
+    if (!editorCanCommand(editor)) return
     const url = window.prompt('Enter image URL')
     if (url) {
       editor.chain().focus().setImage({ src: url }).run()
@@ -402,7 +416,7 @@ const TipTapMenuBar = ({
   const { editor, setLink, addImage } = useEditorCommands()
   const state = useTiptapState(selectToolbarState)
 
-  if (!editor) return null
+  if (!editorCanCommand(editor)) return null
 
   // Review "comment only" stage: no formatting tools, just commenting + undo/redo.
   if (commentOnly) {
@@ -687,7 +701,7 @@ const TipTapBubbleMenu = ({ selectionExtras }) => {
   const { editor, setLink } = useEditorCommands()
   const state = useTiptapState(selectToolbarState)
 
-  if (!editor) return null
+  if (!editorCanCommand(editor)) return null
 
   return (
     <BubbleMenu
@@ -1218,7 +1232,7 @@ const TipTapEditor = ({
   const handlePageSetup = (next) => {
     pageSetupRef.current = next
     setPageSetup(next)
-    if (!editor) return
+    if (!editorCanCommand(editor)) return
 
     // Tables hold absolute pixel column widths, so a page that just got wider or narrower
     // leaves them at their old size — a white strip down one side that no margin setting can
@@ -1238,21 +1252,22 @@ const TipTapEditor = ({
   // mistake. Compared by value: hosts build this array inline.
   const knownTokensKey = Array.isArray(knownTokens) ? knownTokens.join('\u0000') : ''
   useEffect(() => {
-    // `isDestroyed`, not just `!editor`: under StrictMode React mounts, tears
-    // down and remounts effects, and TipTap destroys the editor in between.
-    // This effect still holds that instance — truthy, but with its view and
-    // state already gone — and TipTap's `commands` getter dereferences them,
-    // throwing "Cannot read properties of null (reading 'commands')" out of an
-    // effect, where nothing catches it. That takes the whole page down: the
-    // host's review screen rendered as a blank white document.
-    if (!editor || editor.isDestroyed) return
-    editor.commands.setKnownTokens(Array.isArray(knownTokens) ? knownTokens : null)
+    // TipTap nulls `commandManager` on destroy while the Editor object stays
+    // truthy. Under StrictMode an effect still holds that instance and
+    // `editor.commands` throws "Cannot read properties of null (reading
+    // 'commands')" — the tax certificate Edit path is how that usually shows.
+    if (!editorCanCommand(editor)) return
+    try {
+      editor.commands.setKnownTokens(Array.isArray(knownTokens) ? knownTokens : null)
+    } catch {
+      // StrictMode can destroy between the guard and the call; ignore.
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by value, not identity
   }, [editor, knownTokensKey])
 
   useEffect(() => {
     // Same StrictMode teardown guard as the `setKnownTokens` effect above.
-    if (!editor || editor.isDestroyed || content === undefined) return
+    if (!editorCanCommand(editor) || content === undefined) return
     // Skip echo from our own onUpdate — resetting here collapses blank lines.
     if (content === lastEmittedHtmlRef.current) return
     // While typing, the parent may lag one frame behind the editor.
@@ -1266,6 +1281,7 @@ const TipTapEditor = ({
     // this same parsing + guard logic.
     const parsed = parsePageSetupMarker(content || '')
     applyEditorContent(editor, parsed.html, { skipTracking: Boolean(trackChanges?.enabled) })
+    if (!editorCanCommand(editor)) return
     // Repair-only pass: a saved document can carry a table wider than its own printable
     // width (the page marker and the table widths are saved together but can be captured
     // out of sync), and CSS cannot cap it — a fixed-layout table's colgroup beats
@@ -1284,7 +1300,7 @@ const TipTapEditor = ({
   useEffect(() => {
     // Same StrictMode teardown guard as the effects above — `refitTables…`
     // reads `editor.state`, which is gone on a destroyed instance.
-    if (!editor || editor.isDestroyed) return
+    if (!editorCanCommand(editor)) return
     // Same repair-only clamp as the external-content effect, for the INITIAL content the
     // editor was created with (that effect only fires on later prop changes).
     refitTablesToPrintableWidth(editor, pageSetupRef.current, { onlyOverflowing: true })
@@ -1293,9 +1309,8 @@ const TipTapEditor = ({
   }, [editor])
 
   useEffect(() => {
-    if (editor) {
-      editor.setEditable(editable !== false)
-    }
+    if (!editorCanCommand(editor)) return
+    editor.setEditable(editable !== false)
   }, [editor, editable])
 
   useEffect(() => {
