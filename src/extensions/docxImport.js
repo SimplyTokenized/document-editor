@@ -19,6 +19,13 @@
 import JSZip from 'jszip'
 
 const W_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+const A_NS = 'http://schemas.openxmlformats.org/drawingml/2006/main'
+const WP_NS = 'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing'
+const R_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+const REL_NS = 'http://schemas.openxmlformats.org/package/2006/relationships'
+const EMU_PER_PX = 9525 // 914400 EMU per inch / 96 px
+
+const IMAGE_MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', bmp: 'image/bmp' }
 
 // ─── XML helpers (namespace-aware) ──────────────────────────────────────────────
 const childrenOf = (node, localName) => {
@@ -113,7 +120,31 @@ const hashString = (str) => {
   return hash
 }
 
-const runToHtml = (run) => {
+/** A picture in a run (w:drawing → a:blip r:embed) as an embedded <img>, sized from the
+ *  drawing's extent. The bytes come from the package's media parts, loaded up front by
+ *  `loadImages` — the walk itself is synchronous. Formats the editor cannot show (EMF/WMF)
+ *  were skipped there and come back as a warning, not a broken image. */
+const drawingToHtml = (drawing, ctx) => {
+  const blip = drawing.getElementsByTagNameNS(A_NS, 'blip')[0]
+  const rId = blip && blip.getAttributeNS(R_NS, 'embed')
+  const src = rId && ctx.images ? ctx.images.get(rId) : null
+  if (!src) {
+    if (ctx.warnings && rId) ctx.warnings.push(`Image ${rId} could not be imported.`)
+    return ''
+  }
+  const extent = drawing.getElementsByTagNameNS(WP_NS, 'extent')[0]
+  const cx = extent ? Number(extent.getAttribute('cx')) : 0
+  const cy = extent ? Number(extent.getAttribute('cy')) : 0
+  const size =
+    cx > 0 && cy > 0
+      ? ` width="${Math.round(cx / EMU_PER_PX)}" height="${Math.round(cy / EMU_PER_PX)}"`
+      : ''
+  return `<img src="${src}"${size}>`
+}
+
+const runToHtml = (run, ctx = {}) => {
+  const drawing = firstOf(run, 'drawing')
+  if (drawing) return drawingToHtml(drawing, ctx)
   const text = collectRunText(run)
   if (!text) return ''
 
@@ -180,18 +211,18 @@ const paragraphInlineHtml = (para, ctx) => {
     if (child.nodeType !== 1) continue
     const ln = child.localName
 
-    if (ln === 'r') emit(runToHtml(child))
+    if (ln === 'r') emit(runToHtml(child, ctx))
     else if (ln === 'ins') {
-      const inner = childrenOf(child, 'r').map(runToHtml).join('')
+      const inner = childrenOf(child, 'r').map((r) => runToHtml(r, ctx)).join('')
       emit(ctx.tracked ? insWrap(child, inner) : inner)
     } else if (ln === 'del') {
-      const inner = childrenOf(child, 'r').map(runToHtml).join('')
+      const inner = childrenOf(child, 'r').map((r) => runToHtml(r, ctx)).join('')
       if (ctx.tracked && inner) emit(delWrap(child, inner)) // else: drop the deleted text
     } else if (ln === 'hyperlink') {
       let inner = ''
-      childrenOf(child, 'r').forEach((r) => (inner += runToHtml(r)))
+      childrenOf(child, 'r').forEach((r) => (inner += runToHtml(r, ctx)))
       childrenOf(child, 'ins').forEach((ins) =>
-        childrenOf(ins, 'r').forEach((r) => (inner += runToHtml(r))),
+        childrenOf(ins, 'r').forEach((r) => (inner += runToHtml(r, ctx))),
       )
       emit(inner)
     } else if (ln === 'commentRangeStart' && ctx.tracked && ctx.comments.size) {
@@ -369,6 +400,36 @@ const tableToHtml = (tbl, ctx) => {
  * @param {File} file
  * @returns {Promise<{ html: string, warnings: string[] }>}
  */
+/**
+ * Relationship id → data URI for every picture the body can reference. Resolved through
+ * word/_rels/document.xml.rels, the same indirection Word uses, so a logo survives the
+ * .docx → editor round trip instead of being dropped on the floor.
+ */
+async function loadImages(zip, warnings) {
+  const images = new Map()
+  const relsXml = await zip.file('word/_rels/document.xml.rels')?.async('string')
+  if (!relsXml) return images
+  const rels = new DOMParser().parseFromString(relsXml, 'application/xml')
+  const entries = Array.from(rels.getElementsByTagNameNS(REL_NS, 'Relationship'))
+  await Promise.all(
+    entries.map(async (rel) => {
+      if (!/\/image$/.test(rel.getAttribute('Type') || '')) return
+      const id = rel.getAttribute('Id')
+      const target = (rel.getAttribute('Target') || '').replace(/^\//, '')
+      const path = target.startsWith('word/') ? target : `word/${target.replace(/^\.\.\//, '')}`
+      const ext = (path.split('.').pop() || '').toLowerCase()
+      const mime = IMAGE_MIME[ext]
+      if (!mime) {
+        warnings.push(`Image ${path.split('/').pop()} was skipped (${ext.toUpperCase()} is not supported).`)
+        return
+      }
+      const base64 = await zip.file(path)?.async('base64')
+      if (base64) images.set(id, `data:${mime};base64,${base64}`)
+    }),
+  )
+  return images
+}
+
 export async function importDocxToHtml(file, { trackedChanges = false } = {}) {
   const warnings = []
   const zip = await JSZip.loadAsync(await file.arrayBuffer())
@@ -392,6 +453,8 @@ export async function importDocxToHtml(file, { trackedChanges = false } = {}) {
     numbering: buildNumberingLookup(numberingXml),
     tracked: Boolean(trackedChanges),
     comments: buildCommentsLookup(commentsXml),
+    images: await loadImages(zip, warnings),
+    warnings,
   }
   const html = blocksToHtml(body, ctx)
   return { html, warnings, pageSetup: readPageSetup(body) }

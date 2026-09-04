@@ -182,14 +182,53 @@ const decodeBase64Image = (src) => {
   return { type, bytes }
 }
 
+/** Pixel size read from the image bytes themselves (PNG / JPEG / GIF / BMP headers), so an
+ *  <img> that only states a width — the editor's image node never stores a height unless the
+ *  author resized it — keeps its aspect ratio in Word instead of landing in a 320×200 box. */
+const imageNaturalSize = (bytes, type) => {
+  const be32 = (i) => ((bytes[i] << 24) | (bytes[i + 1] << 16) | (bytes[i + 2] << 8) | bytes[i + 3]) >>> 0
+  const le16 = (i) => bytes[i] | (bytes[i + 1] << 8)
+  const le32 = (i) => (bytes[i] | (bytes[i + 1] << 8) | (bytes[i + 2] << 16) | (bytes[i + 3] << 24)) >>> 0
+  try {
+    if (type === 'png' && bytes.length >= 24) return { width: be32(16), height: be32(20) }
+    if (type === 'gif' && bytes.length >= 10) return { width: le16(6), height: le16(8) }
+    if (type === 'bmp' && bytes.length >= 26) return { width: le32(18), height: le32(22) }
+    if (type === 'jpg') {
+      let i = 2
+      while (i + 9 < bytes.length) {
+        if (bytes[i] !== 0xff) return null
+        const marker = bytes[i + 1]
+        const isSof = marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc
+        if (isSof) return { height: (bytes[i + 5] << 8) | bytes[i + 6], width: (bytes[i + 7] << 8) | bytes[i + 8] }
+        i += 2 + ((bytes[i + 2] << 8) | bytes[i + 3])
+      }
+    }
+  } catch {
+    return null
+  }
+  return null
+}
+
 const buildImageRun = (imgEl) => {
   const decoded = decodeBase64Image(imgEl.getAttribute('src'))
   if (!decoded) return null // External (non-embedded) image URLs aren't fetched/embedded.
 
   const widthAttr = parseFloat(imgEl.style?.width || imgEl.getAttribute('width') || '')
   const heightAttr = parseFloat(imgEl.style?.height || imgEl.getAttribute('height') || '')
-  const width = Number.isFinite(widthAttr) && widthAttr > 0 ? widthAttr : 320
-  const height = Number.isFinite(heightAttr) && heightAttr > 0 ? heightAttr : 200
+  const natural = imageNaturalSize(decoded.bytes, decoded.type)
+  const ratio = natural && natural.width > 0 && natural.height > 0 ? natural.height / natural.width : null
+  // Never wider than the printable area — a logo pasted at full resolution must not push
+  // past the page edge in Word.
+  const maxWidth = Math.max(100, Math.round(CONTENT_WIDTH_TWIPS / 15))
+  let width = Number.isFinite(widthAttr) && widthAttr > 0 ? widthAttr : null
+  let height = Number.isFinite(heightAttr) && heightAttr > 0 ? heightAttr : null
+  if (!width && !height) {
+    width = natural ? Math.min(natural.width, maxWidth) : 320
+  } else if (!width && height) {
+    width = ratio ? Math.round(height / ratio) : 320
+  }
+  width = Math.min(width, maxWidth)
+  if (!height) height = ratio ? Math.round(width * ratio) : 200
 
   return new ImageRun({
     type: decoded.type,
@@ -542,6 +581,16 @@ function walkBlockElement(el, counters) {
   if (tag === 'TABLE') {
     const table = buildTable(el)
     return table ? [table] : []
+  }
+  // A block-level image — the editor's image node is `inline: false`, so a letterhead logo
+  // serializes as a top-level <img>, not inside a <p>. Word only knows images as runs, so it
+  // gets a paragraph of its own; `data-align` is what LegalDocumentImage renders its
+  // alignment as.
+  if (tag === 'IMG') {
+    const run = buildImageRun(el)
+    if (!run) return []
+    const align = el.getAttribute('data-align') || el.style?.textAlign
+    return [new Paragraph({ alignment: ALIGN_MAP[align] || undefined, children: [run] })]
   }
   // Unrecognized wrapper (e.g. a stray <div>) — recurse into its children.
   return walkBlocks(el, counters)
