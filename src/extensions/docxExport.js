@@ -71,6 +71,16 @@ const DEFAULT_CELL_BORDERS = {
   left: DEFAULT_CELL_BORDER,
   right: DEFAULT_CELL_BORDER,
 }
+// A borderless cell (`data-legal-borderless` on the table or the cell — the editor's own
+// flag) draws no lines in Word either; the grid still lays the columns out.
+const NO_CELL_BORDER = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }
+const NO_CELL_BORDERS = {
+  top: NO_CELL_BORDER,
+  bottom: NO_CELL_BORDER,
+  left: NO_CELL_BORDER,
+  right: NO_CELL_BORDER,
+}
+const isBorderless = (el) => el.hasAttribute('data-legal-borderless')
 
 // Space between the cell edge and its text, in twips (1cm ≈ 567). Matches Word's default
 // cell inset (≈0.19cm sides). Overridable per export via the `cellMargins` option.
@@ -460,6 +470,7 @@ const buildColumnWidths = (tableEl, count) => {
 
 const buildTable = (tableEl) => {
   const columnWidths = buildColumnWidths(tableEl, getColumnCount(tableEl))
+  const tableBorderless = isBorderless(tableEl)
 
   const rows = directRows(tableEl)
     .map((tr) => {
@@ -484,7 +495,7 @@ const buildTable = (tableEl) => {
           width: { size: widthTwips || CONTENT_WIDTH_TWIPS, type: WidthType.DXA },
           margins: cellMargins,
           shading: cellShading(cellEl),
-          borders: DEFAULT_CELL_BORDERS,
+          borders: tableBorderless || isBorderless(cellEl) ? NO_CELL_BORDERS : DEFAULT_CELL_BORDERS,
         })
       })
       return cells.length ? new TableRow({ children: cells }) : null

@@ -75,6 +75,20 @@ const mmCssVarAttribute = (key, dataAttr, cssProp) => ({
   },
 })
 
+// A yes/no flag persisted as a bare `data-*` attribute — present means on. Borderless tables
+// are how a bilingual clause sheet reads: a grid that lays the columns out but draws no
+// lines. The stylesheet, the PDF print CSS, the .docx export and the backend PDF renderer
+// all key off the same attribute, so one toggle reaches every output.
+const dataFlagAttribute = (key, dataAttr) => ({
+  default: false,
+  parseHTML: (element) => {
+    const raw = element.getAttribute(dataAttr)
+    return raw !== null && raw !== 'false' && raw !== '0'
+  },
+  renderHTML: (attributes) => (attributes[key] ? { [dataAttr]: '1' } : {}),
+})
+export { dataFlagAttribute }
+
 // Live CSS for the decoration — mirrors mmCssVarAttribute's renderHTML so the on-screen
 // value always matches what would be serialized. Width is intentionally NOT here: see the
 // module doc comment for why a CSS width can never take effect against TableView.
@@ -286,6 +300,7 @@ export const LegalTable = Table.extend({
     return {
       ...this.parent?.(),
       tableWidthPct: dataNumberAttribute('tableWidthPct', 'data-legal-table-width-pct'),
+      borderless: dataFlagAttribute('borderless', 'data-legal-borderless'),
       cellPadY: mmCssVarAttribute('cellPadY', 'data-legal-cell-pad-y', '--legal-doc-cell-pad-y'),
       cellPadX: mmCssVarAttribute('cellPadX', 'data-legal-cell-pad-x', '--legal-doc-cell-pad-x'),
       rowMinH: mmCssVarAttribute('rowMinH', 'data-legal-row-min-h', '--legal-doc-cell-min-h'),

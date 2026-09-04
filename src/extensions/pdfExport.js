@@ -119,6 +119,7 @@ const BODY_CSS = `
   .doc ul { padding-left: 16pt; }
   .doc table { width: 100%; border-collapse: collapse; table-layout: fixed; margin: 6pt 0; }
   .doc th, .doc td { border: 0.5pt solid #999; padding: 2pt 3pt; vertical-align: top; overflow-wrap: anywhere; }
+  .doc table[data-legal-borderless] th, .doc table[data-legal-borderless] td, .doc th[data-legal-borderless], .doc td[data-legal-borderless] { border-color: transparent; }
   .doc img { max-width: 100%; height: auto; }
   .doc a { color: #06c; text-decoration: underline; }
 `
