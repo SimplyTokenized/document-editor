@@ -36,6 +36,7 @@ import PageLayoutPanel, { buildLayoutVars } from './extensions/PageLayoutPanel.j
 import TablePropertiesPanel from './extensions/TablePropertiesPanel.jsx'
 import { parsePageSetupMarker, withPageSetupMarker } from './extensions/pageSetupMarker.js'
 import { TokenHighlight } from './extensions/tokenHighlight.js'
+import { PageBreak } from './extensions/pageBreak.js'
 import { ConditionalText } from './extensions/conditionalText.js'
 import { RepeatBlock } from './extensions/repeatBlock.js'
 import { PlaceholderSuggestion } from './extensions/placeholderSuggestion.js'
@@ -772,6 +773,7 @@ const buildExtensions = (placeholder, trackChanges, placeholderSuggestion, known
       types: ['heading', 'paragraph'],
       alignments: ['left', 'center', 'right', 'justify'],
     }),
+    PageBreak,
     Highlight.configure({
       multicolor: false,
     }),

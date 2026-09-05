@@ -1,0 +1,51 @@
+/**
+ * "Start a new page here" as a real attribute on paragraphs and headings.
+ *
+ * Without it a page break could only be smuggled in as `style="page-break-before: always"`
+ * on a <p> — which the backend PDF renderer honours, but which TipTap drops the moment the
+ * document is re-serialised, because `style` is not an attribute the paragraph node knows.
+ * A template saved once from the editor silently lost every page break.
+ *
+ * Stored twice on purpose: `data-page-break-before` for the editor, the print CSS and the
+ * .docx export to key off, AND the CSS declaration itself, which is what the backend renderer
+ * already reads (`htmlToPdfRenderer.js`, "page-break-before/after: always") — so one attribute
+ * paginates every output the same way.
+ */
+import { Extension } from '@tiptap/core'
+
+const ATTR = 'data-page-break-before'
+
+export const PageBreak = Extension.create({
+  name: 'pageBreak',
+
+  addGlobalAttributes() {
+    return [
+      {
+        types: ['paragraph', 'heading'],
+        attributes: {
+          pageBreakBefore: {
+            default: false,
+            parseHTML: (element) =>
+              element.hasAttribute(ATTR) ||
+              /always/i.test(element.style?.pageBreakBefore || element.style?.breakBefore || ''),
+            renderHTML: (attributes) =>
+              attributes.pageBreakBefore ? { [ATTR]: '1', style: 'page-break-before: always' } : {},
+          },
+        },
+      },
+    ]
+  },
+
+  addCommands() {
+    return {
+      /** Toggle a page break before the block the selection is in. */
+      togglePageBreakBefore:
+        () =>
+        ({ commands, editor }) => {
+          const type = editor.isActive('heading') ? 'heading' : 'paragraph'
+          const current = Boolean(editor.getAttributes(type).pageBreakBefore)
+          return commands.updateAttributes(type, { pageBreakBefore: !current })
+        },
+    }
+  },
+})

@@ -541,6 +541,11 @@ const ALIGN_MAP = {
   justify: AlignmentType.JUSTIFIED,
 }
 const alignmentOf = (el) => ALIGN_MAP[el.style?.textAlign] || undefined
+// The editor's PageBreak attribute (`data-page-break-before`, also written as the CSS
+// `page-break-before: always` the backend PDF renderer reads) → Word's own page break.
+const breaksPageBefore = (el) =>
+  el.hasAttribute?.('data-page-break-before') ||
+  /always/i.test(el.style?.pageBreakBefore || el.style?.breakBefore || '')
 
 function walkBlockElement(el, counters) {
   const tag = el.tagName
@@ -571,6 +576,7 @@ function walkBlockElement(el, counters) {
     return [
       new Paragraph({
         alignment: alignmentOf(el),
+        pageBreakBefore: breaksPageBefore(el) || undefined,
         children: runs.length ? runs : [new TextRun('')],
       }),
     ]
