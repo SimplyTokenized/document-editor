@@ -11,7 +11,8 @@
  *   - paragraph alignment (incl. justify) and Heading 1–3 styles, with their numbering —
  *     Word's own (numPr, directly or through the style) or typed ("1.1 Introduction"),
  *     either way handed to the editor's automatic heading numbering
- *   - tables: column widths (tblGrid), gridSpan (colspan), and cell shading (w:shd fill)
+ *   - tables: column widths (tblGrid), gridSpan (colspan), cell shading (w:shd fill), and
+ *     whether the table (or a cell) draws borders, resolved through the table style
  *   - numbered / bulleted lists (numPr), nested by level
  *
  * Tracked changes: by default they are resolved to the ACCEPTED text (insertions kept,
@@ -265,7 +266,7 @@ const buildStyleLookup = (stylesXml) => {
   const lookup = new Map()
   // Paragraph AND character styles (a run's rStyle), plus the document-wide defaults the
   // cascade starts from and the style a paragraph without a pStyle uses.
-  const part = { styles: lookup, defaultParagraphStyle: null, defaultRunPr: null }
+  const part = { styles: lookup, defaultParagraphStyle: null, defaultTableStyle: null, defaultRunPr: null }
   if (!stylesXml) return part
   const doc = new DOMParser().parseFromString(stylesXml, 'application/xml')
   if (doc.getElementsByTagName('parsererror').length) return part
@@ -276,8 +277,18 @@ const buildStyleLookup = (stylesXml) => {
   part.defaultSpacing = readSpacing(pPrDefault && firstOf(pPrDefault, 'pPr'))
   childrenOf(doc.documentElement, 'style').forEach((style) => {
     const type = wAttr(style, 'type')
-    if (type !== 'paragraph' && type !== 'character') return
     const styleId = wAttr(style, 'styleId')
+    if (type === 'table') {
+      // Table styles matter for one thing here: whether the table draws borders at all.
+      const tblPr = firstOf(style, 'tblPr')
+      lookup.set(styleId, {
+        basedOn: wAttr(firstOf(style, 'basedOn'), 'val'),
+        borders: readBorders(tblPr && firstOf(tblPr, 'tblBorders')),
+      })
+      if (wAttr(style, 'default') === '1') part.defaultTableStyle = styleId
+      return
+    }
+    if (type !== 'paragraph' && type !== 'character') return
     if (type === 'paragraph' && wAttr(style, 'default') === '1') part.defaultParagraphStyle = styleId
     const pPr = firstOf(style, 'pPr')
     const numPr = pPr && firstOf(pPr, 'numPr')
@@ -298,6 +309,57 @@ const buildStyleLookup = (stylesXml) => {
     })
   })
   return part
+}
+
+const BORDER_SIDES = ['top', 'left', 'start', 'bottom', 'right', 'end', 'insideH', 'insideV']
+
+/**
+ * A tblBorders / tcBorders element → { side: visible } for the sides it states. `nil` and
+ * `none` are invisible; any other value (single, double, dotted …) draws a line.
+ */
+const readBorders = (borders) => {
+  const out = {}
+  if (!borders) return out
+  BORDER_SIDES.forEach((side) => {
+    const el = firstOf(borders, side)
+    if (!el) return
+    const val = wAttr(el, 'val')
+    out[side] = val !== 'nil' && val !== 'none' && val !== null
+  })
+  return out
+}
+
+/**
+ * Whether a table draws any border, resolved as Word does: the default table style, then
+ * the table's own style up its basedOn chain, then the table's direct tblBorders — the
+ * nearer layer overriding per side. Word's default "Normal Table" states no borders, so a
+ * table with no style and no tblBorders (as Word's Insert-Table with the grid removed, or
+ * a shaded label sheet like the prospectus front page) is borderless.
+ */
+const tableHasBorders = (tblPr, ctx) => {
+  const chain = (styleId) => {
+    const layers = []
+    const seen = new Set()
+    for (let id = styleId; id && ctx.styles?.has(id) && !seen.has(id); id = ctx.styles.get(id).basedOn) {
+      seen.add(id)
+      layers.unshift(ctx.styles.get(id).borders || {})
+    }
+    return layers
+  }
+  const styleId = tblPr && wAttr(firstOf(tblPr, 'tblStyle'), 'val')
+  const resolved = Object.assign(
+    {},
+    ...chain(ctx.defaultTableStyle),
+    ...(styleId ? chain(styleId) : []),
+    readBorders(tblPr && firstOf(tblPr, 'tblBorders')),
+  )
+  return Object.values(resolved).some(Boolean)
+}
+
+/** A cell that switches every border it states off — and states at least one — is borderless. */
+const cellIsBorderless = (tcPr) => {
+  const stated = Object.values(readBorders(tcPr && firstOf(tcPr, 'tcBorders')))
+  return stated.length > 0 && stated.every((visible) => !visible)
 }
 
 /**
@@ -675,6 +737,7 @@ const tableToHtml = (tbl, ctx) => {
 
       const attrs = []
       if (span > 1) attrs.push(`colspan="${span}"`)
+      if (cellIsBorderless(tcPr)) attrs.push('data-legal-borderless="1"')
       if (spannedPx.length) attrs.push(`colwidth="${spannedPx.join(',')}"`)
       if (fill && fill !== 'auto') {
         attrs.push(`style="background-color: #${fill}"`)
@@ -686,7 +749,8 @@ const tableToHtml = (tbl, ctx) => {
     rowsHtml += `<tr>${cellsHtml}</tr>`
   })
 
-  return `<table><tbody>${rowsHtml}</tbody></table>`
+  const borderless = tableHasBorders(firstOf(tbl, 'tblPr'), ctx) ? '' : ' data-legal-borderless="1"'
+  return `<table${borderless}><tbody>${rowsHtml}</tbody></table>`
 }
 
 // ─── Entry point ──────────────────────────────────────────────────────────────────
@@ -751,6 +815,7 @@ export async function importDocxToHtml(file, { trackedChanges = false } = {}) {
     styles: stylesPart.styles,
     defaultParagraphStyle: stylesPart.defaultParagraphStyle,
     defaultSpacing: stylesPart.defaultSpacing,
+    defaultTableStyle: stylesPart.defaultTableStyle,
     docDefaultRunProps: readRunProps(stylesPart.defaultRunPr, themeFonts),
     themeFonts,
     tracked: Boolean(trackedChanges),
