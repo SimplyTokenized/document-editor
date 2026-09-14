@@ -127,7 +127,23 @@ const pageRule = (pageSetup, marginsMm = {}) => {
 // metrics, so keeping them identical here is what makes its page breaks the PDF's page
 // breaks. Cell shading is inline on the cells (data-background-color → style), so it just
 // prints. Self-contained so the print document doesn't depend on the app's stylesheet.
+// Same aliases as contract-editor.scss (see the comment there): Office's private fonts fall
+// back to the closest face the browser can see, in print as on the paper.
+const PRINT_FONT_ALIASES = `
+  @font-face { font-family: 'Aptos'; src: local('Aptos'), local('Helvetica Neue'), local('Arial'); }
+  @font-face { font-family: 'Aptos'; font-weight: bold; src: local('Aptos Bold'), local('Helvetica Neue Bold'), local('Arial Bold'); }
+  @font-face { font-family: 'Aptos Display'; src: local('Aptos Display'), local('Aptos'), local('Helvetica Neue'), local('Arial'); }
+  @font-face { font-family: 'Aptos Display'; font-weight: bold; src: local('Aptos Display Bold'), local('Aptos Bold'), local('Helvetica Neue Bold'), local('Arial Bold'); }
+  @font-face { font-family: 'Calibri'; src: local('Calibri'), local('Carlito'), local('Helvetica Neue'), local('Arial'); }
+  @font-face { font-family: 'Calibri'; font-weight: bold; src: local('Calibri Bold'), local('Carlito Bold'), local('Helvetica Neue Bold'), local('Arial Bold'); }
+  @font-face { font-family: 'Cambria'; src: local('Cambria'), local('Caladea'), local('Georgia'), local('Times New Roman'); }
+  @font-face { font-family: 'Cambria'; font-weight: bold; src: local('Cambria Bold'), local('Caladea Bold'), local('Georgia Bold'), local('Times New Roman Bold'); }
+  @font-face { font-family: 'Segoe UI'; src: local('Segoe UI'), local('Helvetica Neue'), local('Arial'); }
+  @font-face { font-family: 'Segoe UI'; font-weight: bold; src: local('Segoe UI Bold'), local('Helvetica Neue Bold'), local('Arial Bold'); }
+`
+
 const BODY_CSS = `
+  ${PRINT_FONT_ALIASES}
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; box-sizing: border-box; }
   body { margin: 0; }
   .doc {

@@ -272,6 +272,8 @@ const buildStyleLookup = (stylesXml) => {
   const docDefaults = firstOf(doc.documentElement, 'docDefaults')
   const rPrDefault = docDefaults && firstOf(docDefaults, 'rPrDefault')
   part.defaultRunPr = rPrDefault && firstOf(rPrDefault, 'rPr')
+  const pPrDefault = docDefaults && firstOf(docDefaults, 'pPrDefault')
+  part.defaultSpacing = readSpacing(pPrDefault && firstOf(pPrDefault, 'pPr'))
   childrenOf(doc.documentElement, 'style').forEach((style) => {
     const type = wAttr(style, 'type')
     if (type !== 'paragraph' && type !== 'character') return
@@ -292,9 +294,66 @@ const buildStyleLookup = (stylesXml) => {
       numId: numIdEl ? wAttr(numIdEl, 'val') : null,
       ilvl: ilvlEl ? Number(wAttr(ilvlEl, 'val')) || 0 : null,
       rPr: firstOf(style, 'rPr'),
+      spacing: readSpacing(pPr),
     })
   })
   return part
+}
+
+/**
+ * A pPr's `w:spacing` — only what it states, so the cascade's layers merge by spreading.
+ * before/after in twips; line in twips (exact / atLeast) or 240ths of a line (auto).
+ */
+const readSpacing = (pPr) => {
+  const spacing = pPr && firstOf(pPr, 'spacing')
+  if (!spacing) return {}
+  const num = (name) => {
+    const raw = wAttr(spacing, name)
+    const value = raw == null || raw === '' ? NaN : Number(raw)
+    return Number.isFinite(value) ? value : null
+  }
+  const out = {}
+  const before = num('before')
+  const after = num('after')
+  const line = num('line')
+  if (before != null) out.before = before
+  if (after != null) out.after = after
+  if (line != null) {
+    out.line = line
+    out.lineRule = wAttr(spacing, 'lineRule') || 'auto'
+  }
+  return out
+}
+
+/** Paragraph spacing a style gives, its basedOn ancestors first so the nearer style wins. */
+const styleSpacing = (styles, styleId) => {
+  const chain = []
+  const seen = new Set()
+  for (let id = styleId; id && styles.has(id) && !seen.has(id); id = styles.get(id).basedOn) {
+    seen.add(id)
+    chain.unshift(styles.get(id))
+  }
+  return Object.assign({}, ...chain.map((style) => style.spacing || {}))
+}
+
+// Word's line-spacing multiple is relative to the font's own line height, CSS's unitless
+// value to the font size — see WORD_LINE_HEIGHT_FACTOR in paragraphSpacing.js.
+const WORD_LINE_HEIGHT_FACTOR = 1.17
+const pt = (twips) => `${Math.round((twips / 20) * 10) / 10}pt`
+
+/** The resolved spacing as CSS declarations for the paragraph's style attribute. */
+const spacingCss = (spacing) => {
+  const css = []
+  if (spacing.before != null) css.push(`margin-top: ${pt(spacing.before)}`)
+  if (spacing.after != null) css.push(`margin-bottom: ${pt(spacing.after)}`)
+  if (spacing.line != null && spacing.line > 0) {
+    css.push(
+      spacing.lineRule === 'auto'
+        ? `line-height: ${Math.round((spacing.line / 240) * WORD_LINE_HEIGHT_FACTOR * 100) / 100}`
+        : `line-height: ${pt(spacing.line)}`,
+    )
+  }
+  return css
 }
 
 /** word/theme/theme1.xml → the { major, minor } Latin typefaces an rFonts theme reference names. */
@@ -403,7 +462,23 @@ const readParagraphProps = (para, styles = new Map()) => {
     ilvl: ilvl ?? 0,
     styleId,
     pageBreakBefore: Boolean(pPr && toggleOn(pPr, 'pageBreakBefore')),
+    directSpacing: readSpacing(pPr),
   }
+}
+
+/** The style attribute for a paragraph or heading: alignment, spacing, and the page break. */
+const paragraphStyleAttr = (props, ctx, breaksPage) => {
+  const spacing = {
+    ...(ctx.defaultSpacing || {}),
+    ...(ctx.styles ? styleSpacing(ctx.styles, props.styleId || ctx.defaultParagraphStyle) : {}),
+    ...props.directSpacing,
+  }
+  const css = [
+    ...(breaksPage ? ['page-break-before: always'] : []),
+    ...(props.align ? [`text-align: ${props.align}`] : []),
+    ...spacingCss(spacing),
+  ]
+  return css.length ? ` style="${css.join('; ')}"` : ''
 }
 
 /**
@@ -557,17 +632,14 @@ const blocksToHtml = (container, ctx) => {
       if (props.headingLevel) {
         // Explicit either way: a heading without the attribute falls back to the editor's
         // original default (H2/H3 numbered, H1 not), which is not what this document says.
-        const breakAttrs = breaksPage ? PAGE_BREAK_ATTRS : ''
-        html += `<h${props.headingLevel} data-numbered="${headingNumbered}"${breakAttrs}>${inner}</h${props.headingLevel}>`
-      } else if (breaksPage) {
-        // The PageBreak attribute renders its own style, which must hold the alignment too.
-        const style = props.align ? `; text-align: ${props.align}` : ''
-        html += `<p data-page-break-before="1" style="page-break-before: always${style}">${inner}</p>`
+        const breakAttr = breaksPage ? ' data-page-break-before="1"' : ''
+        const style = paragraphStyleAttr(props, ctx, breaksPage)
+        html += `<h${props.headingLevel} data-numbered="${headingNumbered}"${breakAttr}${style}>${inner}</h${props.headingLevel}>`
       } else {
         // An empty paragraph stays empty — `<br>` would become a hard break, which is a
         // second line on screen (the editor adds its own trailing break) but not in print.
-        const style = props.align ? ` style="text-align: ${props.align}"` : ''
-        html += `<p${style}>${inner}</p>`
+        const breakAttr = breaksPage ? ' data-page-break-before="1"' : ''
+        html += `<p${breakAttr}${paragraphStyleAttr(props, ctx, breaksPage)}>${inner}</p>`
       }
     } else if (node.localName === 'tbl') {
       closeListsTo(0)
@@ -678,6 +750,7 @@ export async function importDocxToHtml(file, { trackedChanges = false } = {}) {
     numbering: buildNumberingLookup(numberingXml),
     styles: stylesPart.styles,
     defaultParagraphStyle: stylesPart.defaultParagraphStyle,
+    defaultSpacing: stylesPart.defaultSpacing,
     docDefaultRunProps: readRunProps(stylesPart.defaultRunPr, themeFonts),
     themeFonts,
     tracked: Boolean(trackedChanges),

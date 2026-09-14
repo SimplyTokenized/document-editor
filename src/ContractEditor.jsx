@@ -40,6 +40,7 @@ import { TokenHighlight } from './extensions/tokenHighlight.js'
 import { PageBreak } from './extensions/pageBreak.js'
 import { HeadingNumbering } from './extensions/headingNumbering.js'
 import { PageView } from './extensions/pageView.js'
+import { ParagraphSpacing } from './extensions/paragraphSpacing.js'
 import { isHeadingNumbered } from './extensions/headingNumbers.js'
 import { ConditionalText } from './extensions/conditionalText.js'
 import { RepeatBlock } from './extensions/repeatBlock.js'
@@ -1134,6 +1135,7 @@ const buildExtensions = (placeholder, trackChanges, placeholderSuggestion, known
     PageBreak,
     HeadingNumbering,
     PageView,
+    ParagraphSpacing,
     Highlight.configure({
       multicolor: false,
     }),

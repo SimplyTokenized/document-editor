@@ -205,6 +205,11 @@ export const HeadingNumbering: unknown
  * `setPageView({ enabled, pageSetup })` — pageSetup in twips, as the layout tool stores it.
  */
 export const PageView: unknown
+/**
+ * Word's paragraph spacing (space before/after, line spacing) on paragraphs and headings,
+ * stored as the CSS it renders to: attributes `marginTop`, `marginBottom`, `lineHeight`.
+ */
+export const ParagraphSpacing: unknown
 /** Each heading's label ("1.", "2.1"), or null when unnumbered — the editor's own scheme. */
 export function computeHeadingNumbers(
   headings: { level: number; numbered?: boolean | null }[],

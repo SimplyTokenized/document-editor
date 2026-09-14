@@ -27,6 +27,7 @@ import {
   ImageRun,
   InsertedTextRun,
   LevelFormat,
+  LineRuleType,
   Packer,
   Paragraph,
   Table,
@@ -542,6 +543,39 @@ const breaksPageBefore = (el) =>
   el.hasAttribute?.('data-page-break-before') ||
   /always/i.test(el.style?.pageBreakBefore || el.style?.breakBefore || '')
 
+const pointsOf = (value) => {
+  const match = /^(-?\d*\.?\d+)(pt|px)$/.exec((value || '').trim())
+  if (!match) return null
+  return match[2] === 'px' ? parseFloat(match[1]) * 0.75 : parseFloat(match[1])
+}
+
+// Word's line-spacing multiple is relative to the font's own line height, CSS's to the
+// font size — see WORD_LINE_HEIGHT_FACTOR in paragraphSpacing.js; the import applied it.
+const WORD_LINE_HEIGHT_FACTOR = 1.17
+
+/** The paragraph's spacing (ParagraphSpacing attributes) as Word's `w:spacing`, in twips. */
+const spacingOf = (el) => {
+  const style = el.style
+  if (!style) return undefined
+  const spacing = {}
+  const before = pointsOf(style.marginTop)
+  const after = pointsOf(style.marginBottom)
+  if (before != null) spacing.before = Math.round(before * 20)
+  if (after != null) spacing.after = Math.round(after * 20)
+  const lineHeight = (style.lineHeight || '').trim()
+  if (/^\d*\.?\d+$/.test(lineHeight)) {
+    spacing.line = Math.round((parseFloat(lineHeight) / WORD_LINE_HEIGHT_FACTOR) * 240)
+    spacing.lineRule = LineRuleType.AUTO
+  } else {
+    const exact = pointsOf(lineHeight)
+    if (exact != null) {
+      spacing.line = Math.round(exact * 20)
+      spacing.lineRule = LineRuleType.EXACT
+    }
+  }
+  return Object.keys(spacing).length ? spacing : undefined
+}
+
 function walkBlockElement(el) {
   const tag = el.tagName
 
@@ -555,6 +589,7 @@ function walkBlockElement(el) {
       new Paragraph({
         heading: HEADING_LEVELS[tag],
         alignment: alignmentOf(el),
+        spacing: spacingOf(el),
         pageBreakBefore: breaksPageBefore(el) || undefined,
         children: withPrefix.length ? withPrefix : [new TextRun('')],
       }),
@@ -565,6 +600,7 @@ function walkBlockElement(el) {
     return [
       new Paragraph({
         alignment: alignmentOf(el),
+        spacing: spacingOf(el),
         pageBreakBefore: breaksPageBefore(el) || undefined,
         children: runs.length ? runs : [new TextRun('')],
       }),

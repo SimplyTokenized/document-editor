@@ -58,6 +58,59 @@
     --doc-editor-page-guide: #ebedef;
   }
 }
+// Fonts Office ships but keeps to itself: on a Mac, Aptos, Calibri and Cambria live inside
+// Word.app's private font collection, so a browser asked for `font-family: Aptos` finds
+// nothing and falls back to its default serif — and an imported Aptos document reads as
+// Times. These aliases use the real face where it IS visible to the browser (Windows, or a
+// user-installed copy) and the closest widely available face otherwise. The stored HTML
+// keeps the real family name, so the .docx export round-trips it. The print stylesheet
+// (pdfExport.js, PRINT_FONT_ALIASES) carries the same list.
+@font-face {
+  font-family: 'Aptos';
+  src: local('Aptos'), local('Helvetica Neue'), local('Arial');
+}
+@font-face {
+  font-family: 'Aptos';
+  font-weight: bold;
+  src: local('Aptos Bold'), local('Helvetica Neue Bold'), local('Arial Bold');
+}
+@font-face {
+  font-family: 'Aptos Display';
+  src: local('Aptos Display'), local('Aptos'), local('Helvetica Neue'), local('Arial');
+}
+@font-face {
+  font-family: 'Aptos Display';
+  font-weight: bold;
+  src: local('Aptos Display Bold'), local('Aptos Bold'), local('Helvetica Neue Bold'), local('Arial Bold');
+}
+@font-face {
+  font-family: 'Calibri';
+  src: local('Calibri'), local('Carlito'), local('Helvetica Neue'), local('Arial');
+}
+@font-face {
+  font-family: 'Calibri';
+  font-weight: bold;
+  src: local('Calibri Bold'), local('Carlito Bold'), local('Helvetica Neue Bold'), local('Arial Bold');
+}
+@font-face {
+  font-family: 'Cambria';
+  src: local('Cambria'), local('Caladea'), local('Georgia'), local('Times New Roman');
+}
+@font-face {
+  font-family: 'Cambria';
+  font-weight: bold;
+  src: local('Cambria Bold'), local('Caladea Bold'), local('Georgia Bold'), local('Times New Roman Bold');
+}
+@font-face {
+  font-family: 'Segoe UI';
+  src: local('Segoe UI'), local('Helvetica Neue'), local('Arial');
+}
+@font-face {
+  font-family: 'Segoe UI';
+  font-weight: bold;
+  src: local('Segoe UI Bold'), local('Helvetica Neue Bold'), local('Arial Bold');
+}
+
 // ---------------------------------------------------------------------------
 // Rich text editor (TipTap) — legal templates, compliance contracts, etc.
 // ---------------------------------------------------------------------------
