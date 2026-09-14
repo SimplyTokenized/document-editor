@@ -396,8 +396,38 @@ const readParagraphProps = (para, styles = new Map()) => {
   }
   // numId 0 is Word's explicit "no numbering": a paragraph switching off its style's list.
   if (numId === '0') numId = null
-  return { align, headingLevel, numId, ilvl: ilvl ?? 0, styleId }
+  return {
+    align,
+    headingLevel,
+    numId,
+    ilvl: ilvl ?? 0,
+    styleId,
+    pageBreakBefore: Boolean(pPr && toggleOn(pPr, 'pageBreakBefore')),
+  }
 }
+
+/**
+ * Word's manual page break is a `<w:br w:type="page"/>` in a run — usually alone in its own
+ * paragraph, sometimes mid-paragraph. Removes the break(s) from the paragraph and reports
+ * where the break falls: 'before' when nothing precedes it (the paragraph itself starts the
+ * new page), 'after' when text precedes it (the NEXT block does), null when there is none.
+ * A paragraph left empty by the removal is dropped by the caller — it was only the break.
+ */
+const takePageBreak = (para) => {
+  const breaks = Array.from(para.getElementsByTagNameNS(W_NS, 'br')).filter(
+    (br) => wAttr(br, 'type') === 'page',
+  )
+  if (!breaks.length) return null
+  const texts = Array.from(para.getElementsByTagNameNS(W_NS, 't'))
+  const first = breaks[0]
+  const textBefore = texts.some(
+    (t) => t.textContent.trim() && first.compareDocumentPosition(t) & Node.DOCUMENT_POSITION_PRECEDING,
+  )
+  breaks.forEach((br) => br.parentNode.removeChild(br))
+  return textBefore ? 'after' : 'before'
+}
+
+const PAGE_BREAK_ATTRS = ' data-page-break-before="1" style="page-break-before: always"'
 
 /** "1.", "1.1", "17.10." followed by whitespace. The dot is required, so a heading that merely
  *  starts with a year ("2024 Annual Report") keeps its text. */
@@ -480,6 +510,15 @@ const blocksToHtml = (container, ctx) => {
 
     if (node.localName === 'p') {
       const props = readParagraphProps(node, ctx.styles)
+      const manualBreak = takePageBreak(node)
+      const isBlank = !node.getElementsByTagNameNS(W_NS, 't').length && !node.getElementsByTagNameNS(W_NS, 'drawing').length
+      if (manualBreak && isBlank) {
+        // The paragraph held nothing but the break: the next block starts the new page.
+        ctx.pendingPageBreak = true
+        continue
+      }
+      const breaksPage = ctx.pendingPageBreak || props.pageBreakBefore || manualBreak === 'before'
+      ctx.pendingPageBreak = manualBreak === 'after'
       // A heading stays a heading even when Word numbers it through a list: the number
       // belongs to the heading, which the editor draws itself, not to a list wrapped around
       // it. A typed number has to come off BEFORE the runs are rendered.
@@ -518,13 +557,24 @@ const blocksToHtml = (container, ctx) => {
       if (props.headingLevel) {
         // Explicit either way: a heading without the attribute falls back to the editor's
         // original default (H2/H3 numbered, H1 not), which is not what this document says.
-        html += `<h${props.headingLevel} data-numbered="${headingNumbered}">${inner}</h${props.headingLevel}>`
+        const breakAttrs = breaksPage ? PAGE_BREAK_ATTRS : ''
+        html += `<h${props.headingLevel} data-numbered="${headingNumbered}"${breakAttrs}>${inner}</h${props.headingLevel}>`
+      } else if (breaksPage) {
+        // The PageBreak attribute renders its own style, which must hold the alignment too.
+        const style = props.align ? `; text-align: ${props.align}` : ''
+        html += `<p data-page-break-before="1" style="page-break-before: always${style}">${inner}</p>`
       } else {
+        // An empty paragraph stays empty — `<br>` would become a hard break, which is a
+        // second line on screen (the editor adds its own trailing break) but not in print.
         const style = props.align ? ` style="text-align: ${props.align}"` : ''
-        html += `<p${style}>${inner || '<br>'}</p>`
+        html += `<p${style}>${inner}</p>`
       }
     } else if (node.localName === 'tbl') {
       closeListsTo(0)
+      // Only paragraphs and headings carry the break, so a table that opens a page gets an
+      // empty one in front of it.
+      if (ctx.pendingPageBreak) html += `<p${PAGE_BREAK_ATTRS}></p>`
+      ctx.pendingPageBreak = false
       html += tableToHtml(node, ctx)
     }
   }

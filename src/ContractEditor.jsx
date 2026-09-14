@@ -39,6 +39,7 @@ import { parsePageSetupMarker, withPageSetupMarker } from './extensions/pageSetu
 import { TokenHighlight } from './extensions/tokenHighlight.js'
 import { PageBreak } from './extensions/pageBreak.js'
 import { HeadingNumbering } from './extensions/headingNumbering.js'
+import { PageView } from './extensions/pageView.js'
 import { isHeadingNumbered } from './extensions/headingNumbers.js'
 import { ConditionalText } from './extensions/conditionalText.js'
 import { RepeatBlock } from './extensions/repeatBlock.js'
@@ -97,6 +98,8 @@ const DEFAULT_LABELS = {
   fontSize: 'Font size (pt)',
   defaultFontSize: 'Default',
   headingNumbering: 'Number this heading (1., 1.1, 1.1.1)',
+  pageBreak: 'Page break — start a new page here (Ctrl+Enter)',
+  removePageBreak: 'Remove the page break before this paragraph',
   textColor: 'Text colour',
   documentColors: 'Colours in this document',
   noDocumentColors: 'No colours used yet',
@@ -129,7 +132,7 @@ const DEFAULT_LABELS = {
   zoomReset: 'Reset zoom to 100%',
   pageGuides: 'Page guides',
   pageGuidesHint:
-    'Show where each printed page ends. A document shorter than one page has no break to show.',
+    'Show the document as printed pages: a paragraph that does not fit is moved to the next page, as in Word.',
   layout: 'Page & layout',
   pageSize: 'Page size',
   preset: 'Format',
@@ -292,6 +295,7 @@ const EMPTY_TOOLBAR_STATE = {
   fontFamily: '',
   fontSize: '',
   color: '',
+  isPageBreak: false,
   isBulletList: false,
   isOrderedList: false,
   isBlockquote: false,
@@ -331,6 +335,7 @@ const selectToolbarState = (ctx) => {
     fontFamily: textStyle.fontFamily || '',
     fontSize: textStyle.fontSize || '',
     color: textStyle.color || '',
+    isPageBreak: Boolean(ctx.editor.getAttributes(heading ? 'heading' : 'paragraph').pageBreakBefore),
     isBulletList: ctx.editor.isActive('bulletList'),
     isOrderedList: ctx.editor.isActive('orderedList'),
     isBlockquote: ctx.editor.isActive('blockquote'),
@@ -855,6 +860,17 @@ const TipTapMenuBar = ({
         >
           &mdash;
         </ToolbarButton>
+        <ToolbarButton
+          title={state.isPageBreak ? labels.removePageBreak : labels.pageBreak}
+          active={state.isPageBreak}
+          onClick={() =>
+            state.isPageBreak
+              ? editor.chain().focus().togglePageBreakBefore().run()
+              : editor.chain().focus().insertPageBreak().run()
+          }
+        >
+          <span className="rich-text-editor__icon-page-break" aria-hidden="true" />
+        </ToolbarButton>
       </div>
 
       <div className="rich-text-editor__toolbar-group">
@@ -1117,6 +1133,7 @@ const buildExtensions = (placeholder, trackChanges, placeholderSuggestion, known
     }),
     PageBreak,
     HeadingNumbering,
+    PageView,
     Highlight.configure({
       multicolor: false,
     }),
@@ -1448,51 +1465,10 @@ const TipTapEditor = ({
   // Mirror for the useEditor onUpdate closure, which is created once and would otherwise
   // read a stale pageSetup forever.
   const pageSetupRef = useRef(pageSetup)
-  const [pageHeightPx, setPageHeightPx] = useState(null)
   const [counts, setCounts] = useState(() => {
     const text = getRichTextPlainText(parsePageSetupMarker(content).html)
     return { words: countWords(text), characters: text.length }
   })
-
-  // Compute the on-screen height of one printable page so the page-break guides land where
-  // Word would actually break. The paper's rendered content width maps to the source's
-  // printable width (twips); apply that same px-per-twip scale to the printable height.
-  useEffect(() => {
-    if (!pageGuides) return undefined
-    const A4 = { w: 11906, h: 16838, mL: 1134, mR: 1134, mT: 1134, mB: 1134 }
-    const pw = pageSetup?.size?.width || A4.w
-    const ph = pageSetup?.size?.height || A4.h
-    const mL = pageSetup?.margins?.left ?? A4.mL
-    const mR = pageSetup?.margins?.right ?? A4.mR
-    const mT = pageSetup?.margins?.top ?? A4.mT
-    const mB = pageSetup?.margins?.bottom ?? A4.mB
-    const printableWidthTwips = Math.max(1, pw - mL - mR)
-    const printableHeightTwips = Math.max(1, ph - mT - mB)
-
-    const measure = () => {
-      const proseEl = rootRef.current?.querySelector('.ProseMirror')
-      if (!proseEl) return
-      // Content-box width (excludes the paper's own padding) ≈ the printable width on paper.
-      const cs = window.getComputedStyle(proseEl)
-      // clientWidth is reported in the element's own LOCAL (nominal, pre-zoom) pixel space —
-      // CSS `zoom` scales how it's *rendered*, not what clientWidth/scrollWidth report — so
-      // this is already the right value for --legal-page-height, a NOMINAL size consumed by a
-      // calc() on that same zoomed element (which re-applies the zoom once, at render time).
-      const innerWidth =
-        proseEl.clientWidth - parseFloat(cs.paddingLeft || '0') - parseFloat(cs.paddingRight || '0')
-      if (innerWidth <= 0) return
-      const scale = innerWidth / printableWidthTwips
-      setPageHeightPx(Math.round(printableHeightTwips * scale))
-    }
-    // Defer once so the ProseMirror node is laid out before the first measure.
-    const raf = requestAnimationFrame(measure)
-    const ro = new ResizeObserver(measure)
-    if (rootRef.current) ro.observe(rootRef.current)
-    return () => {
-      cancelAnimationFrame(raf)
-      ro.disconnect()
-    }
-  }, [pageGuides, pageSetup])
 
   // Auto-fit the zoom so a freshly loaded/imported document never OPENS with a table already
   // bleeding into the review comment margin (a raw .docx import's column widths are captured
@@ -1509,8 +1485,7 @@ const TipTapEditor = ({
       if (!proseEl || !trackEl) return
       // clientWidth/scrollWidth are reported in the (zoomed) element's own LOCAL, pre-zoom
       // pixel space — NOT the real on-screen size — so these three are directly comparable
-      // without adjusting for the current zoom (see the pageHeightPx effect above for the
-      // same nuance).
+      // without adjusting for the current zoom.
       const pageWidth = proseEl.clientWidth // the paper's own max-width box, no overflow
       const contentWidth = proseEl.scrollWidth // paper's content extent, incl. table overflow
       const trackWidth = trackEl.clientWidth // doc column's real (unzoomed) box width
@@ -1556,6 +1531,13 @@ const TipTapEditor = ({
       setCounts({ words: countWords(text), characters: text.length })
     },
   })
+
+  // The page view paginates on screen from the same geometry the paper is drawn with, so a
+  // margin change in the layout tool moves the page breaks as well as the padding.
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return
+    editor.commands.setPageView({ enabled: pageGuides, pageSetup })
+  }, [editor, pageGuides, pageSetup])
 
   // Route ALL page-setup changes (layout tool, .docx import, reset) through here so the new
   // geometry is immediately re-embedded in the emitted content — otherwise changing margins
@@ -1692,12 +1674,11 @@ const TipTapEditor = ({
       ref={rootRef}
       className={classNames('rich-text-editor legal-template-editor', {
         'legal-template-editor--fullscreen': isFullscreen,
-        'legal-template-editor--page-guides': pageGuides && pageHeightPx > 0,
+        'legal-template-editor--page-guides': pageGuides,
         'legal-template-editor--has-comments': commentPanelActive && hasComments,
       })}
       style={{
         minHeight: minHeight || 200,
-        '--legal-page-height': `${pageHeightPx || 1160}px`,
         '--legal-zoom': zoom,
         ...buildLayoutVars(pageSetup),
       }}

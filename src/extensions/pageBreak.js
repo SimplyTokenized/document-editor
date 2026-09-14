@@ -46,6 +46,26 @@ export const PageBreak = Extension.create({
           const current = Boolean(editor.getAttributes(type).pageBreakBefore)
           return commands.updateAttributes(type, { pageBreakBefore: !current })
         },
+      /**
+       * Word's "insert page break": whatever follows the cursor starts a new page. Mid-
+       * paragraph, the paragraph is split first and the second half carries the break; at
+       * the start of a block, the block itself does.
+       */
+      insertPageBreak:
+        () =>
+        ({ tr, commands }) => {
+          const { $from, empty } = tr.selection
+          if (!empty || $from.parentOffset > 0) commands.splitBlock()
+          const type = tr.selection.$from.parent.type.name
+          if (type !== 'paragraph' && type !== 'heading') return false
+          return commands.updateAttributes(type, { pageBreakBefore: true })
+        },
+    }
+  },
+
+  addKeyboardShortcuts() {
+    return {
+      'Mod-Enter': () => this.editor.commands.insertPageBreak(),
     }
   },
 })

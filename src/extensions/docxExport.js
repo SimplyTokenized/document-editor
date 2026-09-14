@@ -555,6 +555,7 @@ function walkBlockElement(el) {
       new Paragraph({
         heading: HEADING_LEVELS[tag],
         alignment: alignmentOf(el),
+        pageBreakBefore: breaksPageBefore(el) || undefined,
         children: withPrefix.length ? withPrefix : [new TextRun('')],
       }),
     ]

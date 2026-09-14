@@ -347,8 +347,11 @@
       outline: 0;
     }
 
+    // Both margins stated, not just the bottom: without a host reset the browser's own
+    // `1em` top margin would apply, and the print stylesheet (which states both) would
+    // paginate differently from the paper.
     p {
-      margin-bottom: 0.5rem;
+      margin: 0 0 0.5rem;
     }
 
     p:last-child {
@@ -357,10 +360,16 @@
 
     // A page break is invisible on an unpaginated screen, so mark it: a dashed rule above the
     // block that starts the new page (paragraph or heading carrying the PageBreak attribute).
+    // Drawn as a background, not a border, so it takes no space: in the page view the
+    // block sits at the top of its page, and the print stylesheet has no such line, so
+    // even one pixel would put the two out of step.
     [data-page-break-before] {
-      border-top: 1px dashed var(--doc-editor-border-subtle);
-      padding-top: 0.5rem;
-      margin-top: 1.25rem;
+      background: repeating-linear-gradient(
+          90deg,
+          var(--doc-editor-border-subtle) 0 4px,
+          transparent 4px 8px
+        )
+        top / 100% 1px no-repeat;
     }
 
     h1 {
@@ -453,6 +462,7 @@
   &__icon-link,
   &__icon-comment,
   &__icon-highlight,
+  &__icon-page-break,
   &__icon-align-left,
   &__icon-align-center,
   &__icon-align-right,
@@ -527,6 +537,19 @@
     content: '💬';
     font-size: 0.85rem;
     line-height: 1.2;
+  }
+
+  // A sheet with a dashed line across it — the break.
+  &__icon-page-break::before {
+    content: '';
+    display: block;
+    width: 0.7rem;
+    height: 0.9rem;
+    margin: 0.05rem auto 0;
+    border: 1.5px solid currentColor;
+    border-radius: 1px;
+    background: repeating-linear-gradient(90deg, currentColor 0 2px, transparent 2px 4px) center /
+      100% 1.5px no-repeat;
   }
 
   &__icon-highlight::before {
@@ -698,6 +721,11 @@
   // layout tool (via CSS vars set on the editor root) so the on-screen paper reflects the
   // real page size and margins ("distance") the author picks.
   max-width: var(--legal-page-width, 820px);
+  // The page width includes the margins, as on paper; the host apps' global resets already
+  // say so, stated here so the page view's min-height (padding included) means the same
+  // everywhere. Relative so the page-gap separators can reach out over the padding.
+  box-sizing: border-box;
+  position: relative;
   margin: 0 auto;
   // Zoom control scales the paper only (toolbar/comment margin stay put). `zoom` (not
   // `transform: scale`) so it's a real layout change — the scroll container's scrollable
@@ -1308,24 +1336,43 @@
   }
 }
 
-// Page-break guides that read like Word's page view: at each printable-page interval the
-// paper shows a shaded "gutter" band (the space between two sheets) with a soft shadow at
-// the top of the next page. `--legal-page-height` is computed from the document's real page
-// size/margins in JS. NOTE: TipTap does not paginate, so these are visual guides — the REAL
-// page breaks are produced by Word / the PDF engine on export, which paginate for real.
-.legal-template-editor--page-guides .tiptap,
-.legal-template-editor--page-guides .ProseMirror {
-  background-image: repeating-linear-gradient(
-    to bottom,
-    transparent 0,
-    transparent calc(var(--legal-page-height) - 14px),
-    rgba(0, 0, 0, 0.16) calc(var(--legal-page-height) - 14px),
-    var(--doc-editor-page-guide) calc(var(--legal-page-height) - 13px),
-    var(--doc-editor-page-guide) calc(var(--legal-page-height) - 1px),
-    rgba(0, 0, 0, 0.1) var(--legal-page-height),
-    transparent calc(var(--legal-page-height) + 2px)
-  );
-  background-attachment: local;
+// Page view. The PageView extension measures the blocks and inserts one of these gaps in
+// front of every block that would run past the bottom of its page: the rest of that page,
+// the bottom margin, the separator strip between the two sheets, and the next page's top
+// margin. The strip spans the full sheet width (out over the paper's padding) so the paper
+// reads as a stack of pages rather than one column with lines across it.
+.legal-page-gap {
+  position: relative;
+  margin: 0;
+  pointer-events: none; // a click in the gutter lands in the editor, which places the caret
+  user-select: none;
+
+  &__sep {
+    position: absolute;
+    top: var(--legal-gap-sep-top, 0);
+    left: calc(-1 * var(--legal-page-pad-left, 3rem));
+    right: calc(-1 * var(--legal-page-pad-right, 3rem));
+    height: 24px;
+    background: var(--doc-editor-page-guide);
+    // The bottom edge of the sheet above and the top edge of the sheet below.
+    box-shadow:
+      inset 0 2px 3px -1px rgba(0, 0, 0, 0.18),
+      inset 0 -1px 2px rgba(0, 0, 0, 0.1);
+
+    &::after {
+      content: 'Page ' attr(data-page);
+      position: absolute;
+      top: 50%;
+      right: 0.75rem;
+      transform: translateY(-50%);
+      color: var(--doc-editor-fg-muted);
+      font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+      font-size: 0.65rem;
+      font-weight: 600;
+      line-height: 1;
+      letter-spacing: 0.04em;
+    }
+  }
 }
 
 .legal-template-editor__wordcount {

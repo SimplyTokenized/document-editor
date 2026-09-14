@@ -6,6 +6,7 @@
  */
 
 import { commonHeadingTextStyle, headingNumberStyleCss, headingNumbersFor } from './headingNumbers.js'
+import { parsePageSetupMarker } from './pageSetupMarker.js'
 
 const TWIPS_PER_MM = 56.6929 // 1mm = 1440/25.4 twips
 const mm = (twips) => `${(twips / TWIPS_PER_MM).toFixed(2)}mm`
@@ -74,6 +75,14 @@ const numberHeadingsForPrint = (html) => {
     'text/html',
   )
   const root = parsed.getElementById('r')
+  // The editor draws a line box for an empty block and one more after a trailing <br>
+  // (ProseMirror's trailing break); a browser rendering the same HTML draws neither. A
+  // zero-width space at the end gives print the same line, so the two paginate alike.
+  root.querySelectorAll('p, h1, h2, h3, li, td, th, blockquote').forEach((el) => {
+    const last = el.lastChild
+    const blank = !el.textContent && !el.querySelector('img, table')
+    if (blank || (last && last.nodeName === 'BR')) el.appendChild(parsed.createTextNode('​'))
+  })
   headingNumbersFor(root).forEach((label, heading) => {
     heading.setAttribute('data-heading-number', label)
     // Same as the editor: the number takes the line's font/size/colour when it has one.
@@ -84,11 +93,6 @@ const numberHeadingsForPrint = (html) => {
   })
   return root.innerHTML
 }
-
-// Default PDF top margin (mm). The imported source often reserves a large top margin for a
-// page header we don't render, which leaves an oversized gap once headers are off — so the
-// PDF top defaults to this smaller value. Override per export via options.marginsMm.top.
-const DEFAULT_PDF_TOP_MM = 8
 
 /**
  * Build the @page rule from the source document's page geometry (twips) so the PDF has the
@@ -117,33 +121,45 @@ const pageRule = (pageSetup, marginsMm = {}) => {
   return `@page { ${size} ${margin} }`
 }
 
-// Mirrors the on-screen paper: Arial, automatic heading/list numbering, table borders.
-// Cell background shading is inline on the cells (data-background-color → style), so it just
-// prints. Kept self-contained so the print document doesn't depend on the app's stylesheet.
+// The on-screen paper's typography, value for value (contract-editor.scss, `.ProseMirror`
+// inside `.legal-template-editor`, with 1rem = 16px): same font and size, same line height,
+// same block spacing, same table insets. The editor's page view paginates from these
+// metrics, so keeping them identical here is what makes its page breaks the PDF's page
+// breaks. Cell shading is inline on the cells (data-background-color → style), so it just
+// prints. Self-contained so the print document doesn't depend on the app's stylesheet.
 const BODY_CSS = `
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; box-sizing: border-box; }
   body { margin: 0; }
   .doc {
-    font-family: Arial, Helvetica, sans-serif;
-    font-size: 8pt;
+    font-family: Arial, Helvetica, 'Helvetica Neue', sans-serif;
+    font-size: 13.12px;
     line-height: 1.45;
-    color: #000;
+    color: #212529;
+    overflow-wrap: break-word;
   }
-  .doc h1 { font-size: 13pt; font-weight: 700; margin: 0 0 6pt; }
-  .doc h2 { font-size: 11pt; font-weight: 700; margin: 8pt 0 4pt; }
-  .doc h3 { font-size: 9.5pt; font-weight: 700; margin: 6pt 0 3pt; }
+  .doc > :first-child { margin-top: 0; }
+  .doc > :last-child { margin-bottom: 0; }
+  .doc p { margin: 0 0 8px; }
+  .doc h1 { font-size: 26.4px; font-weight: 600; margin: 13.6px 0 8.8px; }
+  .doc h2 { font-size: 21.6px; font-weight: 600; margin: 12px 0 8px; }
+  .doc h3 { font-size: 18.4px; font-weight: 600; margin: 10.4px 0 6.4px; }
   .doc [data-heading-number]::before { content: attr(data-heading-number) ' '; font-family: var(--heading-number-font-family, inherit); font-size: var(--heading-number-font-size, inherit); color: var(--heading-number-color, inherit); }
-  .doc p { margin: 0 0 4pt; }
-  .doc ol { counter-reset: legal-item; list-style: none; padding-left: 16pt; }
+  .doc ul, .doc ol { margin: 8px 0; padding-left: 24px; }
+  .doc ol { counter-reset: legal-item; list-style: none; padding-left: 28px; }
   .doc ol > li { position: relative; counter-increment: legal-item; }
-  .doc ol > li::before { content: counters(legal-item, '.') '. '; position: absolute; left: -16pt; font-weight: 600; }
-  .doc ul { padding-left: 16pt; }
-  .doc table { width: 100%; border-collapse: collapse; table-layout: fixed; margin: 6pt 0; }
-  .doc th, .doc td { border: 0.5pt solid #999; padding: 2pt 3pt; vertical-align: top; overflow-wrap: anywhere; }
+  .doc ol > li::before { content: counters(legal-item, '.') '. '; position: absolute; left: -28px; min-width: 24px; font-weight: 600; }
+  .doc blockquote { margin: 12px 0; padding: 8px 0 8px 16px; border-left: 3px solid #dee2e6; color: #6c757d; }
+  .doc hr { margin: 16px 0; border: 0; border-top: 1px solid #dee2e6; }
+  .doc code { padding: 1.6px 5.6px; border-radius: 4px; background: #f8f9fa; font-size: 0.875em; }
+  .doc table { width: 100%; max-width: 100%; border-collapse: collapse; table-layout: fixed; margin: 16px 0; }
+  .doc th, .doc td { border: 1px solid #dee2e6; padding: var(--legal-doc-cell-pad-y, 4.48px) var(--legal-doc-cell-pad-x, 6.4px); height: var(--legal-doc-cell-min-h, auto); vertical-align: top; overflow-wrap: anywhere; word-break: break-word; }
+  .doc th { background: #f8f9fa; font-weight: 600; text-align: left; }
+  .doc table p { margin-bottom: 5.6px; }
+  .doc table p:last-child { margin-bottom: 0; }
   .doc [data-page-break-before] { page-break-before: always; break-before: page; }
   .doc table[data-legal-borderless] th, .doc table[data-legal-borderless] td, .doc th[data-legal-borderless], .doc td[data-legal-borderless] { border-color: transparent; }
-  .doc img { max-width: 100%; height: auto; }
-  .doc a { color: #06c; text-decoration: underline; }
+  .doc img { max-width: 100%; height: auto; margin: 8px 0; }
+  .doc a { color: #5856d6; text-decoration: underline; }
 `
 
 /**
@@ -210,20 +226,21 @@ const screenCss = (pageSetup, marginsMm = {}) => {
  * Exported so a host can render it in an iframe for a true "this is the PDF" preview,
  * instead of approximating the paged output with app styles.
  *
- * @param {string} html - the editor's serialized content (contract_content)
+ * @param {string} html - the editor's serialized content (contract_content). The page-setup
+ *   marker the editor embeds in it is read here, so a host need not pass `pageSetup`.
  * @param {object} [options]
  * @param {string} [options.title]
  * @param {{size?:{width,height},margins?:{top,right,bottom,left}}} [options.pageSetup] - page
- *   size + margins (twips) from the imported source so the PDF matches the source geometry.
+ *   size + margins (twips); overrides the marker in the content.
  * @param {{top?:number,right?:number,bottom?:number,left?:number}} [options.marginsMm] -
- *   per-side page-margin overrides in mm (top defaults to DEFAULT_PDF_TOP_MM).
+ *   per-side page-margin overrides in mm. None by default: the PDF uses the document's own
+ *   margins, the same ones the editor's paper and page view are laid out with.
  */
-export function buildPrintableDocument(
-  html,
-  { title = 'Contract', pageSetup, marginsMm = { top: DEFAULT_PDF_TOP_MM } } = {},
-) {
-  const css = `${pageRule(pageSetup, marginsMm)}\n${BODY_CSS}\n${screenCss(pageSetup, marginsMm)}`
-  const body = numberHeadingsForPrint(normalizeTablesForPrint(html))
+export function buildPrintableDocument(html, { title = 'Contract', pageSetup, marginsMm = {} } = {}) {
+  const marker = parsePageSetupMarker(html)
+  const setup = pageSetup ?? marker.pageSetup
+  const css = `${pageRule(setup, marginsMm)}\n${BODY_CSS}\n${screenCss(setup, marginsMm)}`
+  const body = numberHeadingsForPrint(normalizeTablesForPrint(marker.html))
   return (
     `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title>` +
     `<style>${css}</style></head><body><div class="doc">${body}</div></body></html>`
@@ -238,10 +255,7 @@ export function buildPrintableDocument(
  * render `buildPrintableDocument` rather than a separately-styled copy — same HTML, same
  * stylesheet, same @page rule, so what the reader sees is what the PDF will be.
  */
-export function exportHtmlToPdf(
-  html,
-  { title = 'Contract', pageSetup, marginsMm = { top: DEFAULT_PDF_TOP_MM } } = {},
-) {
+export function exportHtmlToPdf(html, { title = 'Contract', pageSetup, marginsMm = {} } = {}) {
   const iframe = document.createElement('iframe')
   iframe.setAttribute('aria-hidden', 'true')
   Object.assign(iframe.style, {
