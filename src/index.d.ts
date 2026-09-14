@@ -192,4 +192,17 @@ export const RepeatBlock: unknown
 export const REPEAT_BLOCK_ATTR: string
 export const CONDITIONAL_TEXT_ATTR: string
 export const PlaceholderSuggestion: unknown
+/**
+ * Word-style heading numbering ("1.", "1.1", "1.1.1"), switchable per heading. Stores the
+ * choice as `data-numbered="true|false"`; the numbers themselves are computed, never stored.
+ *
+ * Command: `toggleHeadingNumbering()`.
+ */
+export const HeadingNumbering: unknown
+/** Each heading's label ("1.", "2.1"), or null when unnumbered — the editor's own scheme. */
+export function computeHeadingNumbers(
+  headings: { level: number; numbered?: boolean | null }[],
+): (string | null)[]
+/** Labels for every h1–h3 under `root`, keyed by element; numbered headings only. */
+export function headingNumbersFor(root: ParentNode): Map<Element, string>
 export function getAuthorColorIndex(...args: unknown[]): number

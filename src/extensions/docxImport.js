@@ -5,8 +5,12 @@
  * a "clean HTML" converter, so Word's DIRECT formatting survives into the editor and, from
  * there, back out to the .docx export:
  *   - run formatting: bold / italic / underline / strike, font family, font size, color,
- *     highlight / run shading
- *   - paragraph alignment (incl. justify) and Heading 1–3 styles
+ *     highlight / run shading — resolved through Word's style cascade (document defaults,
+ *     paragraph style, character style, direct formatting), so text formatted only by its
+ *     style keeps that look
+ *   - paragraph alignment (incl. justify) and Heading 1–3 styles, with their numbering —
+ *     Word's own (numPr, directly or through the style) or typed ("1.1 Introduction"),
+ *     either way handed to the editor's automatic heading numbering
  *   - tables: column widths (tblGrid), gridSpan (colspan), and cell shading (w:shd fill)
  *   - numbered / bulleted lists (numPr), nested by level
  *
@@ -151,22 +155,25 @@ const runToHtml = (run, ctx = {}) => {
   let html = escapeHtml(text).replace(/\n/g, '<br>').replace(/\t/g, '&#9;&#9;')
 
   const rPr = firstOf(run, 'rPr')
+  const rStyleId = rPr && wAttr(firstOf(rPr, 'rStyle'), 'val')
+  // Word's cascade, nearest wins: the paragraph's resolved defaults + style, then the run's
+  // character style, then the run's own direct formatting.
+  const props = {
+    ...(ctx.paragraphRunProps || {}),
+    ...(rStyleId && ctx.styles ? styleRunProps(ctx.styles, rStyleId, ctx.themeFonts) : {}),
+    ...readRunProps(rPr, ctx.themeFonts),
+  }
+
+  const styles = []
+  if (props.font) styles.push(`font-family: ${props.font.replace(/["<>;]/g, '')}`)
+  if (props.size) styles.push(`font-size: ${props.size}pt`)
+  if (props.color) styles.push(`color: #${props.color}`)
+  let highlighted = false
   if (rPr) {
-    const styles = []
-    const rFonts = firstOf(rPr, 'rFonts')
-    const font = rFonts && wAttr(rFonts, 'ascii')
-    if (font) styles.push(`font-family: ${font}`)
-    const sz = firstOf(rPr, 'sz')
-    const szVal = sz && wAttr(sz, 'val')
-    if (szVal) styles.push(`font-size: ${Number(szVal) / 2}pt`)
-    const color = firstOf(rPr, 'color')
-    const colorVal = color && wAttr(color, 'val')
-    if (colorVal && colorVal !== 'auto') styles.push(`color: #${colorVal}`)
     // Word's highlighter (w:highlight) → the editor's highlight mark (<mark>), so a reviewer's
     // yellow-marked passages come in still marked. Run shading (w:shd) stays a background color.
     const highlight = firstOf(rPr, 'highlight')
     const highlightVal = highlight && wAttr(highlight, 'val')
-    let highlighted = false
     if (highlightVal && highlightVal !== 'none') {
       highlighted = true
     } else {
@@ -174,14 +181,14 @@ const runToHtml = (run, ctx = {}) => {
       const fill = shd && wAttr(shd, 'fill')
       if (fill && fill !== 'auto') styles.push(`background-color: #${fill}`)
     }
-    if (styles.length) html = `<span style="${styles.join('; ')}">${html}</span>`
-
-    if (toggleOn(rPr, 'b')) html = `<strong>${html}</strong>`
-    if (toggleOn(rPr, 'i')) html = `<em>${html}</em>`
-    if (toggleOn(rPr, 'u')) html = `<u>${html}</u>`
-    if (toggleOn(rPr, 'strike') || toggleOn(rPr, 'dstrike')) html = `<s>${html}</s>`
-    if (highlighted) html = `<mark>${html}</mark>`
   }
+  if (styles.length) html = `<span style="${styles.join('; ')}">${html}</span>`
+
+  if (props.bold) html = `<strong>${html}</strong>`
+  if (props.italic) html = `<em>${html}</em>`
+  if (props.underline) html = `<u>${html}</u>`
+  if (props.strike) html = `<s>${html}</s>`
+  if (highlighted) html = `<mark>${html}</mark>`
   return html
 }
 
@@ -248,12 +255,109 @@ const paragraphInlineHtml = (para, ctx) => {
 // ─── Paragraph properties ────────────────────────────────────────────────────────
 const HEADING_STYLE = /^(?:heading|berschrift)\s*([1-3])$/i
 
-const readParagraphProps = (para) => {
+/**
+ * word/styles.xml → Map<styleId, { basedOn, headingLevel, numId, ilvl }> for paragraph styles.
+ * Word very often numbers through the STYLE rather than the paragraph ("List Number", or a
+ * Heading 1 tied to a multilevel list), so a paragraph with no numPr of its own can still be
+ * a numbered one.
+ */
+const buildStyleLookup = (stylesXml) => {
+  const lookup = new Map()
+  // Paragraph AND character styles (a run's rStyle), plus the document-wide defaults the
+  // cascade starts from and the style a paragraph without a pStyle uses.
+  const part = { styles: lookup, defaultParagraphStyle: null, defaultRunPr: null }
+  if (!stylesXml) return part
+  const doc = new DOMParser().parseFromString(stylesXml, 'application/xml')
+  if (doc.getElementsByTagName('parsererror').length) return part
+  const docDefaults = firstOf(doc.documentElement, 'docDefaults')
+  const rPrDefault = docDefaults && firstOf(docDefaults, 'rPrDefault')
+  part.defaultRunPr = rPrDefault && firstOf(rPrDefault, 'rPr')
+  childrenOf(doc.documentElement, 'style').forEach((style) => {
+    const type = wAttr(style, 'type')
+    if (type !== 'paragraph' && type !== 'character') return
+    const styleId = wAttr(style, 'styleId')
+    if (type === 'paragraph' && wAttr(style, 'default') === '1') part.defaultParagraphStyle = styleId
+    const pPr = firstOf(style, 'pPr')
+    const numPr = pPr && firstOf(pPr, 'numPr')
+    const numIdEl = numPr && firstOf(numPr, 'numId')
+    const ilvlEl = numPr && firstOf(numPr, 'ilvl')
+    // The name as well as the id: Word keeps "heading 1" as the NAME in every UI language,
+    // while the id is localised ("berschrift1").
+    const headingMatch =
+      HEADING_STYLE.exec((styleId || '').replace(/\s+/g, '')) ||
+      HEADING_STYLE.exec((wAttr(firstOf(style, 'name'), 'val') || '').replace(/\s+/g, ''))
+    lookup.set(styleId, {
+      basedOn: wAttr(firstOf(style, 'basedOn'), 'val'),
+      headingLevel: type === 'paragraph' && headingMatch ? Number(headingMatch[1]) : null,
+      numId: numIdEl ? wAttr(numIdEl, 'val') : null,
+      ilvl: ilvlEl ? Number(wAttr(ilvlEl, 'val')) || 0 : null,
+      rPr: firstOf(style, 'rPr'),
+    })
+  })
+  return part
+}
+
+/** word/theme/theme1.xml → the { major, minor } Latin typefaces an rFonts theme reference names. */
+const buildThemeFonts = (themeXml) => {
+  if (!themeXml) return {}
+  const doc = new DOMParser().parseFromString(themeXml, 'application/xml')
+  const typeface = (name) =>
+    doc.getElementsByTagNameNS(A_NS, name)[0]?.getElementsByTagNameNS(A_NS, 'latin')[0]?.getAttribute('typeface') ||
+    null
+  return { major: typeface('majorFont'), minor: typeface('minorFont') }
+}
+
+/**
+ * The run properties an rPr STATES — and only those, so the cascade's layers merge by
+ * spreading, the nearer one overriding. Toggles an rPr turns off explicitly (`<w:b w:val="0"/>`)
+ * come through as false, which is how a run un-bolds text its style made bold.
+ */
+const readRunProps = (rPr, themeFonts = {}) => {
+  if (!rPr) return {}
+  const props = {}
+  const rFonts = firstOf(rPr, 'rFonts')
+  if (rFonts) {
+    // A theme reference outranks a named font in Word — and Word drops the named one when it
+    // re-saves — so the theme's typeface wins whenever the package has a theme to resolve it.
+    const theme = wAttr(rFonts, 'asciiTheme') || wAttr(rFonts, 'hAnsiTheme')
+    const font =
+      (theme && themeFonts[theme.startsWith('major') ? 'major' : 'minor']) ||
+      wAttr(rFonts, 'ascii') ||
+      wAttr(rFonts, 'hAnsi')
+    if (font) props.font = font
+  }
+  const size = wAttr(firstOf(rPr, 'sz'), 'val')
+  if (size) props.size = Number(size) / 2
+  const color = wAttr(firstOf(rPr, 'color'), 'val')
+  if (color) props.color = color === 'auto' ? null : color
+  for (const [key, names] of [
+    ['bold', ['b']],
+    ['italic', ['i']],
+    ['underline', ['u']],
+    ['strike', ['strike', 'dstrike']],
+  ]) {
+    if (names.some((name) => firstOf(rPr, name))) props[key] = names.some((name) => toggleOn(rPr, name))
+  }
+  return props
+}
+
+/** Run properties a style gives: its basedOn ancestors first, so the nearer style wins. */
+const styleRunProps = (styles, styleId, themeFonts) => {
+  const chain = []
+  const seen = new Set()
+  for (let id = styleId; id && styles.has(id) && !seen.has(id); id = styles.get(id).basedOn) {
+    seen.add(id)
+    chain.unshift(styles.get(id))
+  }
+  return Object.assign({}, ...chain.map((style) => readRunProps(style.rPr, themeFonts)))
+}
+
+const readParagraphProps = (para, styles = new Map()) => {
   const pPr = firstOf(para, 'pPr')
   let align = null
-  let headingLevel = null
+  let styleId = null
   let numId = null
-  let ilvl = 0
+  let ilvl = null
   if (pPr) {
     const jc = firstOf(pPr, 'jc')
     const jcVal = jc && wAttr(jc, 'val')
@@ -261,19 +365,71 @@ const readParagraphProps = (para) => {
     else if (jcVal === 'center' || jcVal === 'right' || jcVal === 'left') align = jcVal
 
     const pStyle = firstOf(pPr, 'pStyle')
-    const styleId = pStyle && wAttr(pStyle, 'val')
-    const headingMatch = styleId && HEADING_STYLE.exec(styleId.replace(/\s+/g, ''))
-    if (headingMatch) headingLevel = Number(headingMatch[1])
+    styleId = pStyle && wAttr(pStyle, 'val')
 
     const numPr = firstOf(pPr, 'numPr')
     if (numPr) {
       const numIdEl = firstOf(numPr, 'numId')
       const ilvlEl = firstOf(numPr, 'ilvl')
       numId = numIdEl && wAttr(numIdEl, 'val')
-      ilvl = ilvlEl ? Number(wAttr(ilvlEl, 'val')) || 0 : 0
+      ilvl = ilvlEl ? Number(wAttr(ilvlEl, 'val')) || 0 : null
     }
   }
-  return { align, headingLevel, numId, ilvl }
+
+  // Heading level comes from the paragraph's own style only (basing a style on Heading 1
+  // inherits its look, not its place in the outline); numbering the paragraph does not set
+  // itself is inherited up the basedOn chain, as Word does.
+  let headingLevel = null
+  const seen = new Set()
+  for (let id = styleId; id && !seen.has(id); id = styles.get(id).basedOn) {
+    seen.add(id)
+    const style = styles.get(id)
+    if (!style) {
+      // No styles part, or a style it does not define — the id alone still says "Heading 2".
+      const match = id === styleId && HEADING_STYLE.exec(id.replace(/\s+/g, ''))
+      if (match) headingLevel = Number(match[1])
+      break
+    }
+    if (id === styleId) headingLevel = style.headingLevel
+    if (numId == null && style.numId != null) numId = style.numId
+    if (ilvl == null && style.ilvl != null) ilvl = style.ilvl
+  }
+  // numId 0 is Word's explicit "no numbering": a paragraph switching off its style's list.
+  if (numId === '0') numId = null
+  return { align, headingLevel, numId, ilvl: ilvl ?? 0, styleId }
+}
+
+/** "1.", "1.1", "17.10." followed by whitespace. The dot is required, so a heading that merely
+ *  starts with a year ("2024 Annual Report") keeps its text. */
+const LEADING_NUMBER = /^\s*\d+\.(?:\d+\.?)*(?=\s)\s*/
+
+/**
+ * A heading whose number was TYPED ("1.1 Introduction") rather than produced by Word's
+ * numbering. Removes the typed number from the paragraph's text and reports whether there
+ * was one, so the editor numbers the heading instead — otherwise the number shows twice
+ * ("1.1 1.1 Introduction") and no longer follows when sections are added or moved.
+ */
+const stripLeadingNumber = (para) => {
+  const pieces = Array.from(para.getElementsByTagNameNS(W_NS, '*')).filter(
+    (el) => el.localName === 't' || (el.localName === 'tab' && el.parentNode?.localName === 'r'),
+  )
+  const text = pieces.map((el) => (el.localName === 'tab' ? '\t' : el.textContent)).join('')
+  const match = LEADING_NUMBER.exec(text)
+  if (!match) return false
+
+  let remaining = match[0].length
+  for (const el of pieces) {
+    if (remaining <= 0) break
+    if (el.localName === 'tab') {
+      el.parentNode.removeChild(el)
+      remaining -= 1
+    } else {
+      const length = el.textContent.length
+      el.textContent = el.textContent.slice(remaining)
+      remaining -= length
+    }
+  }
+  return true
 }
 
 // ─── Numbering (numId → bullet vs ordered) ───────────────────────────────────────
@@ -323,10 +479,24 @@ const blocksToHtml = (container, ctx) => {
     if (node.nodeType !== 1) continue
 
     if (node.localName === 'p') {
-      const props = readParagraphProps(node)
+      const props = readParagraphProps(node, ctx.styles)
+      // A heading stays a heading even when Word numbers it through a list: the number
+      // belongs to the heading, which the editor draws itself, not to a list wrapped around
+      // it. A typed number has to come off BEFORE the runs are rendered.
+      const headingNumbered = props.headingLevel
+        ? Boolean(props.numId) || stripLeadingNumber(node)
+        : false
+      // What every run in this paragraph starts from: the document defaults, then the
+      // paragraph's style (or the default paragraph style when it names none).
+      ctx.paragraphRunProps = {
+        ...(ctx.docDefaultRunProps || {}),
+        ...(ctx.styles
+          ? styleRunProps(ctx.styles, props.styleId || ctx.defaultParagraphStyle, ctx.themeFonts)
+          : {}),
+      }
       const inner = paragraphInlineHtml(node, ctx)
 
-      if (props.numId) {
+      if (props.numId && !props.headingLevel) {
         const kind = listKind(ctx.numbering, props.numId, props.ilvl)
         const tag = kind === 'bullet' ? 'ul' : 'ol'
         const targetDepth = props.ilvl + 1
@@ -346,7 +516,9 @@ const blocksToHtml = (container, ctx) => {
 
       closeListsTo(0)
       if (props.headingLevel) {
-        html += `<h${props.headingLevel}>${inner}</h${props.headingLevel}>`
+        // Explicit either way: a heading without the attribute falls back to the editor's
+        // original default (H2/H3 numbered, H1 not), which is not what this document says.
+        html += `<h${props.headingLevel} data-numbered="${headingNumbered}">${inner}</h${props.headingLevel}>`
       } else {
         const style = props.align ? ` style="text-align: ${props.align}"` : ''
         html += `<p${style}>${inner || '<br>'}</p>`
@@ -439,6 +611,9 @@ export async function importDocxToHtml(file, { trackedChanges = false } = {}) {
     throw new Error('Not a valid .docx file (missing word/document.xml).')
   }
   const numberingXml = await zip.file('word/numbering.xml')?.async('string')
+  const stylesXml = await zip.file('word/styles.xml')?.async('string')
+  const stylesPart = buildStyleLookup(stylesXml)
+  const themeFonts = buildThemeFonts(await zip.file('word/theme/theme1.xml')?.async('string'))
   // Only needed for tracked-changes import — maps comment ids to their author + text.
   const commentsXml = trackedChanges ? await zip.file('word/comments.xml')?.async('string') : null
 
@@ -451,6 +626,10 @@ export async function importDocxToHtml(file, { trackedChanges = false } = {}) {
 
   const ctx = {
     numbering: buildNumberingLookup(numberingXml),
+    styles: stylesPart.styles,
+    defaultParagraphStyle: stylesPart.defaultParagraphStyle,
+    docDefaultRunProps: readRunProps(stylesPart.defaultRunPr, themeFonts),
+    themeFonts,
     tracked: Boolean(trackedChanges),
     comments: buildCommentsLookup(commentsXml),
     images: await loadImages(zip, warnings),

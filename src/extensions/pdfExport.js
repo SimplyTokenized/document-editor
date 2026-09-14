@@ -5,6 +5,8 @@
  * because they're inline on the HTML (shading) or replicated in the print stylesheet below.
  */
 
+import { commonHeadingTextStyle, headingNumberStyleCss, headingNumbersFor } from './headingNumbers.js'
+
 const TWIPS_PER_MM = 56.6929 // 1mm = 1440/25.4 twips
 const mm = (twips) => `${(twips / TWIPS_PER_MM).toFixed(2)}mm`
 
@@ -62,6 +64,27 @@ const normalizeTablesForPrint = (html) => {
   return parsed.getElementById('r').innerHTML
 }
 
+/**
+ * Stamp each numbered heading with its label (`data-heading-number`, drawn by the print
+ * stylesheet) — the same numbers the editor shows, which the stored HTML does not carry.
+ */
+const numberHeadingsForPrint = (html) => {
+  const parsed = new DOMParser().parseFromString(
+    `<body><div id="r">${html || ''}</div></body>`,
+    'text/html',
+  )
+  const root = parsed.getElementById('r')
+  headingNumbersFor(root).forEach((label, heading) => {
+    heading.setAttribute('data-heading-number', label)
+    // Same as the editor: the number takes the line's font/size/colour when it has one.
+    const numberStyle = headingNumberStyleCss(commonHeadingTextStyle(heading))
+    if (numberStyle) {
+      heading.setAttribute('style', [heading.getAttribute('style'), numberStyle].filter(Boolean).join('; '))
+    }
+  })
+  return root.innerHTML
+}
+
 // Default PDF top margin (mm). The imported source often reserves a large top margin for a
 // page header we don't render, which leaves an oversized gap once headers are off — so the
 // PDF top defaults to this smaller value. Override per export via options.marginsMm.top.
@@ -105,13 +128,11 @@ const BODY_CSS = `
     font-size: 8pt;
     line-height: 1.45;
     color: #000;
-    counter-reset: legal-h2;
   }
   .doc h1 { font-size: 13pt; font-weight: 700; margin: 0 0 6pt; }
-  .doc h2 { font-size: 11pt; font-weight: 700; margin: 8pt 0 4pt; counter-reset: legal-h3; counter-increment: legal-h2; }
-  .doc h2::before { content: counter(legal-h2) '. '; }
-  .doc h3 { font-size: 9.5pt; font-weight: 700; margin: 6pt 0 3pt; counter-increment: legal-h3; }
-  .doc h3::before { content: counter(legal-h2) '.' counter(legal-h3) ' '; }
+  .doc h2 { font-size: 11pt; font-weight: 700; margin: 8pt 0 4pt; }
+  .doc h3 { font-size: 9.5pt; font-weight: 700; margin: 6pt 0 3pt; }
+  .doc [data-heading-number]::before { content: attr(data-heading-number) ' '; font-family: var(--heading-number-font-family, inherit); font-size: var(--heading-number-font-size, inherit); color: var(--heading-number-color, inherit); }
   .doc p { margin: 0 0 4pt; }
   .doc ol { counter-reset: legal-item; list-style: none; padding-left: 16pt; }
   .doc ol > li { position: relative; counter-increment: legal-item; }
@@ -202,7 +223,7 @@ export function buildPrintableDocument(
   { title = 'Contract', pageSetup, marginsMm = { top: DEFAULT_PDF_TOP_MM } } = {},
 ) {
   const css = `${pageRule(pageSetup, marginsMm)}\n${BODY_CSS}\n${screenCss(pageSetup, marginsMm)}`
-  const body = normalizeTablesForPrint(html)
+  const body = numberHeadingsForPrint(normalizeTablesForPrint(html))
   return (
     `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title>` +
     `<style>${css}</style></head><body><div class="doc">${body}</div></body></html>`
