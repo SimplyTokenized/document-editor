@@ -1314,7 +1314,10 @@ const TipTapEditor = ({
   }, [editor, editable])
 
   useEffect(() => {
-    onEditorReady?.(editor || null)
+    // A destroyed instance is worth no more to the host than none at all: hosts
+    // store what they are handed in state and call it later, and every such
+    // call would throw the same way. Hand up null instead.
+    onEditorReady?.(editor && !editor.isDestroyed ? editor : null)
     return () => onEditorReady?.(null)
   }, [editor, onEditorReady])
 
