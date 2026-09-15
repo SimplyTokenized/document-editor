@@ -121,6 +121,64 @@
   background: var(--doc-editor-bg);
   overflow: hidden;
 
+  // Word's ribbon: a row of tabs above the tool row. The tabs are text, not
+  // buttons — an underline marks the open one, the way every ribbon does it —
+  // and undo/redo sit at the row's right end so they are never a tab away.
+  &__ribbon {
+    display: flex;
+    flex-direction: column;
+  }
+
+  &__ribbon-tabs {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.25rem;
+    padding: 0.25rem 0.75rem 0;
+    background: var(--doc-editor-bg);
+    border-bottom: 1px solid var(--doc-editor-border);
+  }
+
+  &__ribbon-tab {
+    padding: 0.4rem 0.65rem 0.45rem;
+    margin: 0;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    background: transparent;
+    color: var(--doc-editor-fg);
+    opacity: 0.75;
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    line-height: 1.2;
+    cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+
+    &:hover {
+      opacity: 1;
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--doc-editor-primary);
+      outline-offset: -2px;
+    }
+
+    &--active {
+      color: var(--doc-editor-primary);
+      border-bottom-color: var(--doc-editor-primary);
+      font-weight: 600;
+      opacity: 1;
+    }
+  }
+
+  // Undo/redo, pushed to the far right of the tab row and lifted off the
+  // baseline so the group's border does not merge with the tab underline.
+  &__ribbon-quick {
+    display: inline-flex;
+    margin-left: auto;
+    margin-bottom: 0.25rem;
+  }
+
   &__toolbar {
     display: flex;
     flex-wrap: wrap;
