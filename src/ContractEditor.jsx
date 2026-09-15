@@ -41,6 +41,10 @@ import { PageBreak } from './extensions/pageBreak.js'
 import { HeadingNumbering } from './extensions/headingNumbering.js'
 import { PageView } from './extensions/pageView.js'
 import { ParagraphSpacing } from './extensions/paragraphSpacing.js'
+import { VectorIllustration } from './extensions/vectorIllustration.js'
+import { getVectorWorkspacePos } from './extensions/vectorWorkspace/workspaceState.js'
+import { imageFilesOf, insertImageFiles, pickImageFiles } from './extensions/imageIntake.js'
+import { Captioned } from './toolbarIcons.jsx'
 import { isHeadingNumbered } from './extensions/headingNumbers.js'
 import { ConditionalText } from './extensions/conditionalText.js'
 import { RepeatBlock } from './extensions/repeatBlock.js'
@@ -59,16 +63,12 @@ import './contract-editor.scss'
 const Spinner = () => <span className="contract-editor__spinner" aria-hidden="true" />
 
 /**
- * Replace the editor's whole content. In review mode (skipTracking) the replacement is
- * dispatched with a `skipTrackChanges` meta so the track-changes engine does NOT record the
- * programmatic content set (external sync / .docx import) as one giant insertion. In template
- * mode it's an ordinary setContent.
+ * TipTap nulls `commandManager` on destroy; `isDestroyed` alone is not enough
+ * under StrictMode remounts — accessing `.commands` then throws and takes the
+ * host page down (tax certificate Edit is the usual path).
+ * Also treat the internal `destroyed` flag (set at the start of `destroy()`)
+ * as authoritative: `isDestroyed` only mirrors `editorView`, which can lag.
  */
-/** TipTap nulls `commandManager` on destroy; `isDestroyed` alone is not enough
- *  under StrictMode remounts — accessing `.commands` then throws and takes the
- *  host page down (tax certificate Edit is the usual path).
- *  Also treat the internal `destroyed` flag (set at the start of `destroy()`)
- *  as authoritative: `isDestroyed` only mirrors `editorView`, which can lag. */
 const editorCanCommand = (editor) =>
   Boolean(
     editor &&
@@ -77,6 +77,12 @@ const editorCanCommand = (editor) =>
       editor.commandManager,
   )
 
+/**
+ * Replace the editor's whole content. In review mode (skipTracking) the replacement is
+ * dispatched with a `skipTrackChanges` meta so the track-changes engine does NOT record the
+ * programmatic content set (external sync / .docx import) as one giant insertion. In template
+ * mode it's an ordinary setContent.
+ */
 const applyEditorContent = (editor, html, { skipTracking = false, emitUpdate = false } = {}) => {
   if (!editorCanCommand(editor)) return
   const safeHtml = html || '<p></p>'
@@ -114,6 +120,12 @@ const DEFAULT_LABELS = {
   defaultFontSize: 'Default',
   headingNumbering: 'Number this heading (1., 1.1, 1.1.1)',
   pageBreak: 'Page break — start a new page here (Ctrl+Enter)',
+  insertVector: 'Insert vector illustration',
+  editVector: '✒️ Edit Vector',
+  vectorDone: '✓ Done',
+  wrapNone: 'Text above and below (own line)',
+  wrapLeft: 'Illustration left, text flows on the right',
+  wrapRight: 'Illustration right, text flows on the left',
   removePageBreak: 'Remove the page break before this paragraph',
   textColor: 'Text colour',
   documentColors: 'Colours in this document',
@@ -121,6 +133,28 @@ const DEFAULT_LABELS = {
   customColor: 'Custom colour',
   applyColor: 'Apply',
   removeColor: 'Automatic (remove colour)',
+  // Captions under the Insert tab's buttons (the titles above stay as the tooltips).
+  captionQuote: 'Quote',
+  captionRule: 'Rule',
+  captionPageBreak: 'Page break',
+  captionImage: 'Image',
+  captionVector: 'Drawing',
+  captionLink: 'Link',
+  captionTable: 'Table',
+  captionColBefore: 'Col. before',
+  captionColAfter: 'Col. after',
+  captionColDelete: 'Del. col.',
+  captionRowBefore: 'Row above',
+  captionRowAfter: 'Row below',
+  captionRowDelete: 'Del. row',
+  captionTableDelete: 'Del. table',
+  captionWrapNone: 'In line',
+  captionWrapLeft: 'Wrap left',
+  captionWrapRight: 'Wrap right',
+  tabHome: 'Home',
+  tabInsert: 'Insert',
+  tabFields: 'Fields',
+  tabReview: 'Review',
   insertTable: 'Insert table',
   addColumnBefore: 'Add column before',
   addColumnAfter: 'Add column after',
@@ -311,6 +345,10 @@ const EMPTY_TOOLBAR_STATE = {
   fontSize: '',
   color: '',
   isPageBreak: false,
+  isVector: false,
+  isImage: false,
+  vectorWrap: 'none',
+  vectorEditing: false,
   isBulletList: false,
   isOrderedList: false,
   isBlockquote: false,
@@ -333,6 +371,8 @@ const selectToolbarState = (ctx) => {
   // already null, so `editor.can()` / `.commands` throws and takes the whole
   // React root down. Treat destroyed exactly like absent.
   if (!editorCanCommand(ctx.editor)) return EMPTY_TOOLBAR_STATE
+  const heading = ctx.editor.isActive('heading') ? ctx.editor.getAttributes('heading') : null
+  const textStyle = ctx.editor.getAttributes('textStyle')
   return {
     isBold: ctx.editor.isActive('bold'),
     isItalic: ctx.editor.isActive('italic'),
@@ -349,6 +389,11 @@ const selectToolbarState = (ctx) => {
     fontSize: textStyle.fontSize || '',
     color: textStyle.color || '',
     isPageBreak: Boolean(ctx.editor.getAttributes(heading ? 'heading' : 'paragraph').pageBreakBefore),
+    isVector: ctx.editor.isActive('vectorIllustration'),
+    isImage: ctx.editor.isActive('image'),
+    vectorWrap:
+      (ctx.editor.isActive('image') ? ctx.editor.getAttributes('image').wrap : ctx.editor.getAttributes('vectorIllustration').wrap) ||
+      'none',
     isBulletList: ctx.editor.isActive('bulletList'),
     isOrderedList: ctx.editor.isActive('orderedList'),
     isBlockquote: ctx.editor.isActive('blockquote'),
@@ -362,6 +407,8 @@ const selectToolbarState = (ctx) => {
     canRedo: ctx.editor.can().chain().focus().redo().run(),
     // Drives the "Add comment" button's enabled state — see canCommentOnSelection.
     canComment: canCommentOnSelection(ctx.editor),
+    // An illustration is open in its workspace: the toolbar shows the vector tools instead.
+    vectorEditing: getVectorWorkspacePos(ctx.editor.state) != null,
   }
 }
 
@@ -380,12 +427,12 @@ const useEditorCommands = () => {
     editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run()
   }
 
-  const addImage = () => {
+  // A real file picker; the host's `uploadImage` (S3 via its API) stores the bytes and the
+  // document keeps the URL — without one the picture is embedded inline. See imageIntake.js.
+  const addImage = async () => {
     if (!editorCanCommand(editor)) return
-    const url = window.prompt('Enter image URL')
-    if (url) {
-      editor.chain().focus().setImage({ src: url }).run()
-    }
+    const files = await pickImageFiles()
+    if (files.length) await insertImageFiles(editor, files, editor.storage.imageIntake?.uploadImage)
   }
 
   return { editor, setLink, addImage }
@@ -752,6 +799,7 @@ const TipTapMenuBar = ({
 }) => {
   const { editor, setLink, addImage } = useEditorCommands()
   const state = useTiptapState(selectToolbarState)
+  const [tab, setTab] = useState('home')
 
   if (!editorCanCommand(editor)) return null
 
@@ -790,254 +838,340 @@ const TipTapMenuBar = ({
     )
   }
 
+  // Word's ribbon: one row of tabs, one row of tools. The old toolbar put every
+  // group on screen at once and wrapped onto three rows, which is where the
+  // document started for anybody on a laptop; a Word user also looks for
+  // "Insert" when they want a table, not for a tenth group to the right of
+  // headings. Undo and redo stay in the tab row, always visible, like the
+  // quick-access buttons above Word's ribbon. Tabs that would be empty for
+  // this host — no host fields, no review actions — are not offered at all.
+  const tabs = [
+    { id: 'home', label: labels.tabHome },
+    { id: 'insert', label: labels.tabInsert },
+    ...(insertExtras ? [{ id: 'fields', label: labels.tabFields }] : []),
+    ...(onComment || onChangeWithAI ? [{ id: 'review', label: labels.tabReview }] : []),
+  ]
+  const current = tabs.some((entry) => entry.id === tab) ? tab : 'home'
+  const currentLabel = (tabs.find((entry) => entry.id === current) || tabs[0]).label
+
   return (
-    <div className="rich-text-editor__toolbar" role="toolbar" aria-label="Text formatting">
-      <FontControls state={state} editor={editor} labels={labels} />
-      <ColorControl state={state} editor={editor} labels={labels} />
-      <FormattingGroup state={state} editor={editor} />
-
-      <div className="rich-text-editor__toolbar-group">
-        <ToolbarButton
-          title="Heading 1"
-          active={state.isHeading1}
-          onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-        >
-          H1
-        </ToolbarButton>
-        <ToolbarButton
-          title="Heading 2"
-          active={state.isHeading2}
-          onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-        >
-          H2
-        </ToolbarButton>
-        <ToolbarButton
-          title="Heading 3"
-          active={state.isHeading3}
-          onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
-        >
-          H3
-        </ToolbarButton>
-        <ToolbarButton
-          title={labels.headingNumbering}
-          active={state.isHeadingNumbered}
-          disabled={!state.isHeading}
-          onClick={() => editor.chain().focus().toggleHeadingNumbering().run()}
-        >
-          1.1
-        </ToolbarButton>
+    // While an illustration is being drawn the toolbar IS the vector toolbar: the workspace
+    // (VectorWorkspace.jsx) renders its tools into this slot, so drawing happens on the
+    // paper with the tools where every other tool is — one integrated feature. The ribbon
+    // comes back the moment the drawing is closed.
+    state.vectorEditing ? (
+      <div className="rich-text-editor__toolbar rich-text-editor__toolbar--vector" role="toolbar" aria-label="Vector tools">
+        <div className="legal-template-editor__vector-tools" />
       </div>
-
-      <div className="rich-text-editor__toolbar-group">
-        <ToolbarButton
-          title="Bullet list"
-          active={state.isBulletList}
-          onClick={() => editor.chain().focus().toggleBulletList().run()}
-        >
-          <span className="rich-text-editor__icon-list" aria-hidden="true" />
-        </ToolbarButton>
-        <ToolbarButton
-          title="Numbered list"
-          active={state.isOrderedList}
-          onClick={() => editor.chain().focus().toggleOrderedList().run()}
-        >
-          <span className="rich-text-editor__icon-olist" aria-hidden="true" />
-        </ToolbarButton>
-        <ToolbarButton
-          title="Indent clause (nest as 1.1, 1.1.1 …)"
-          disabled={!state.isBulletList && !state.isOrderedList}
-          onClick={() => editor.chain().focus().sinkListItem('listItem').run()}
-        >
-          <span className="rich-text-editor__icon-indent" aria-hidden="true" />
-        </ToolbarButton>
-        <ToolbarButton
-          title="Outdent clause"
-          disabled={!state.isBulletList && !state.isOrderedList}
-          onClick={() => editor.chain().focus().liftListItem('listItem').run()}
-        >
-          <span className="rich-text-editor__icon-outdent" aria-hidden="true" />
-        </ToolbarButton>
-      </div>
-
-      <div className="rich-text-editor__toolbar-group">
-        <ToolbarButton
-          title="Blockquote"
-          active={state.isBlockquote}
-          onClick={() => editor.chain().focus().toggleBlockquote().run()}
-        >
-          &ldquo;
-        </ToolbarButton>
-        <ToolbarButton
-          title="Horizontal rule"
-          onClick={() => editor.chain().focus().setHorizontalRule().run()}
-        >
-          &mdash;
-        </ToolbarButton>
-        <ToolbarButton
-          title={state.isPageBreak ? labels.removePageBreak : labels.pageBreak}
-          active={state.isPageBreak}
-          onClick={() =>
-            state.isPageBreak
-              ? editor.chain().focus().togglePageBreakBefore().run()
-              : editor.chain().focus().insertPageBreak().run()
-          }
-        >
-          <span className="rich-text-editor__icon-page-break" aria-hidden="true" />
-        </ToolbarButton>
-      </div>
-
-      <div className="rich-text-editor__toolbar-group">
-        <ToolbarButton
-          title="Insert image"
-          onClick={onImageRequest ? () => onImageRequest(editor) : addImage}
-        >
-          <span className="rich-text-editor__icon-image" aria-hidden="true" />
-        </ToolbarButton>
-        <ToolbarButton title="Insert link" active={state.isLink} onClick={setLink}>
-          <span className="rich-text-editor__icon-link" aria-hidden="true" />
-        </ToolbarButton>
-        <ToolbarButton
-          title="Highlight"
-          active={state.isHighlight}
-          onClick={() => editor.chain().focus().toggleHighlight().run()}
-        >
-          <span className="rich-text-editor__icon-highlight" aria-hidden="true" />
-        </ToolbarButton>
-      </div>
-
-      <div className="rich-text-editor__toolbar-group">
-        <ToolbarButton
-          title={labels.insertTable}
-          onClick={() =>
-            editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
-          }
-        >
-          <span className="rich-text-editor__icon-table" aria-hidden="true" />
-        </ToolbarButton>
-        <ToolbarButton
-          title={labels.addColumnBefore}
-          disabled={!state.isTable}
-          onClick={() => editor.chain().focus().addColumnBefore().run()}
-        >
-          <span className="rich-text-editor__icon-col-before" aria-hidden="true" />
-        </ToolbarButton>
-        <ToolbarButton
-          title={labels.addColumnAfter}
-          disabled={!state.isTable}
-          onClick={() => editor.chain().focus().addColumnAfter().run()}
-        >
-          <span className="rich-text-editor__icon-col-after" aria-hidden="true" />
-        </ToolbarButton>
-        <ToolbarButton
-          title={labels.deleteColumn}
-          disabled={!state.isTable}
-          onClick={() => editor.chain().focus().deleteColumn().run()}
-        >
-          <span className="rich-text-editor__icon-col-delete" aria-hidden="true" />
-        </ToolbarButton>
-        <ToolbarButton
-          title={labels.addRowBefore}
-          disabled={!state.isTable}
-          onClick={() => editor.chain().focus().addRowBefore().run()}
-        >
-          <span className="rich-text-editor__icon-row-before" aria-hidden="true" />
-        </ToolbarButton>
-        <ToolbarButton
-          title={labels.addRowAfter}
-          disabled={!state.isTable}
-          onClick={() => editor.chain().focus().addRowAfter().run()}
-        >
-          <span className="rich-text-editor__icon-row-after" aria-hidden="true" />
-        </ToolbarButton>
-        <ToolbarButton
-          title={labels.deleteRow}
-          disabled={!state.isTable}
-          onClick={() => editor.chain().focus().deleteRow().run()}
-        >
-          <span className="rich-text-editor__icon-row-delete" aria-hidden="true" />
-        </ToolbarButton>
-        <ToolbarButton
-          title={labels.deleteTable}
-          disabled={!state.isTable}
-          onClick={() => editor.chain().focus().deleteTable().run()}
-        >
-          <span className="rich-text-editor__icon-table-delete" aria-hidden="true" />
-        </ToolbarButton>
-      </div>
-
-      <TablePropertiesPanel
-        labels={labels}
-        editor={editor}
-        disabled={!state.isTable}
-        attrs={state.tableAttrs}
-      />
-
-      <div className="rich-text-editor__toolbar-group">
-        <ToolbarButton
-          title="Align left"
-          active={state.isAlignLeft}
-          onClick={() => setLegalContentAlign(editor, 'left')}
-        >
-          <span className="rich-text-editor__icon-align-left" aria-hidden="true" />
-        </ToolbarButton>
-        <ToolbarButton
-          title="Align center"
-          active={state.isAlignCenter}
-          onClick={() => setLegalContentAlign(editor, 'center')}
-        >
-          <span className="rich-text-editor__icon-align-center" aria-hidden="true" />
-        </ToolbarButton>
-        <ToolbarButton
-          title="Align right"
-          active={state.isAlignRight}
-          onClick={() => setLegalContentAlign(editor, 'right')}
-        >
-          <span className="rich-text-editor__icon-align-right" aria-hidden="true" />
-        </ToolbarButton>
-      </div>
-
-      {insertExtras ? (
-        // Host-supplied insert tools (merge-field placeholders, signature anchors). They sit
-        // with image/link/table because they are the same kind of action — put something at
-        // the cursor — rather than in the document-actions bar above.
-        <div className="legal-template-editor__insert-extras">{insertExtras}</div>
-      ) : null}
-      {onComment || onChangeWithAI ? (
-        <div className="rich-text-editor__toolbar-group">
-          {onComment ? (
+    ) : (
+    <div className="rich-text-editor__ribbon">
+      <div className="rich-text-editor__ribbon-tabs" role="tablist">
+        {tabs.map((entry) => (
+          <button
+            key={entry.id}
+            type="button"
+            role="tab"
+            aria-selected={current === entry.id}
+            className={classNames('rich-text-editor__ribbon-tab', {
+              'rich-text-editor__ribbon-tab--active': current === entry.id,
+            })}
+            onClick={() => setTab(entry.id)}
+          >
+            {entry.label}
+          </button>
+        ))}
+        <div className="rich-text-editor__ribbon-quick">
+          <div className="rich-text-editor__toolbar-group">
             <ToolbarButton
-              title={state.canComment ? labels.addComment : labels.addCommentNeedsSelection}
-              disabled={!state.canComment}
-              onClick={onComment}
+              title="Undo"
+              disabled={!state.canUndo}
+              onClick={() => editor.chain().focus().undo().run()}
             >
-              <span className="rich-text-editor__icon-comment" aria-hidden="true" />
+              <span className="rich-text-editor__icon-undo" aria-hidden="true" />
             </ToolbarButton>
-          ) : null}
-          {onChangeWithAI ? (
-            <ToolbarButton title={labels.changeWithAI} onClick={onChangeWithAI}>
-              ✨
+            <ToolbarButton
+              title="Redo"
+              disabled={!state.canRedo}
+              onClick={() => editor.chain().focus().redo().run()}
+            >
+              <span className="rich-text-editor__icon-redo" aria-hidden="true" />
             </ToolbarButton>
-          ) : null}
+          </div>
         </div>
-      ) : null}
+      </div>
 
-      <div className="rich-text-editor__toolbar-group">
-        <ToolbarButton
-          title="Undo"
-          disabled={!state.canUndo}
-          onClick={() => editor.chain().focus().undo().run()}
-        >
-          <span className="rich-text-editor__icon-undo" aria-hidden="true" />
-        </ToolbarButton>
-        <ToolbarButton
-          title="Redo"
-          disabled={!state.canRedo}
-          onClick={() => editor.chain().focus().redo().run()}
-        >
-          <span className="rich-text-editor__icon-redo" aria-hidden="true" />
-        </ToolbarButton>
+      <div className="rich-text-editor__toolbar" role="toolbar" aria-label={currentLabel}>
+        {current === 'home' ? (
+          <>
+          <FontControls state={state} editor={editor} labels={labels} />
+          <ColorControl state={state} editor={editor} labels={labels} />
+          <FormattingGroup state={state} editor={editor} />
+
+          <div className="rich-text-editor__toolbar-group">
+            <ToolbarButton
+              title="Heading 1"
+              active={state.isHeading1}
+              onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+            >
+              H1
+            </ToolbarButton>
+            <ToolbarButton
+              title="Heading 2"
+              active={state.isHeading2}
+              onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+            >
+              H2
+            </ToolbarButton>
+            <ToolbarButton
+              title="Heading 3"
+              active={state.isHeading3}
+              onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
+            >
+              H3
+            </ToolbarButton>
+            <ToolbarButton
+              title={labels.headingNumbering}
+              active={state.isHeadingNumbered}
+              disabled={!state.isHeading}
+              onClick={() => editor.chain().focus().toggleHeadingNumbering().run()}
+            >
+              1.1
+            </ToolbarButton>
+          </div>
+
+          <div className="rich-text-editor__toolbar-group">
+            <ToolbarButton
+              title="Bullet list"
+              active={state.isBulletList}
+              onClick={() => editor.chain().focus().toggleBulletList().run()}
+            >
+              <span className="rich-text-editor__icon-list" aria-hidden="true" />
+            </ToolbarButton>
+            <ToolbarButton
+              title="Numbered list"
+              active={state.isOrderedList}
+              onClick={() => editor.chain().focus().toggleOrderedList().run()}
+            >
+              <span className="rich-text-editor__icon-olist" aria-hidden="true" />
+            </ToolbarButton>
+            <ToolbarButton
+              title="Indent clause (nest as 1.1, 1.1.1 …)"
+              disabled={!state.isBulletList && !state.isOrderedList}
+              onClick={() => editor.chain().focus().sinkListItem('listItem').run()}
+            >
+              <span className="rich-text-editor__icon-indent" aria-hidden="true" />
+            </ToolbarButton>
+            <ToolbarButton
+              title="Outdent clause"
+              disabled={!state.isBulletList && !state.isOrderedList}
+              onClick={() => editor.chain().focus().liftListItem('listItem').run()}
+            >
+              <span className="rich-text-editor__icon-outdent" aria-hidden="true" />
+            </ToolbarButton>
+          </div>
+
+          <div className="rich-text-editor__toolbar-group">
+            <ToolbarButton
+              title="Align left"
+              active={state.isAlignLeft}
+              onClick={() => setLegalContentAlign(editor, 'left')}
+            >
+              <span className="rich-text-editor__icon-align-left" aria-hidden="true" />
+            </ToolbarButton>
+            <ToolbarButton
+              title="Align center"
+              active={state.isAlignCenter}
+              onClick={() => setLegalContentAlign(editor, 'center')}
+            >
+              <span className="rich-text-editor__icon-align-center" aria-hidden="true" />
+            </ToolbarButton>
+            <ToolbarButton
+              title="Align right"
+              active={state.isAlignRight}
+              onClick={() => setLegalContentAlign(editor, 'right')}
+            >
+              <span className="rich-text-editor__icon-align-right" aria-hidden="true" />
+            </ToolbarButton>
+          </div>
+
+          <div className="rich-text-editor__toolbar-group">
+            <ToolbarButton
+              title="Highlight"
+              active={state.isHighlight}
+              onClick={() => editor.chain().focus().toggleHighlight().run()}
+            >
+              <span className="rich-text-editor__icon-highlight" aria-hidden="true" />
+            </ToolbarButton>
+          </div>
+          </>
+        ) : null}
+        {current === 'insert' ? (
+          <>
+          <div className="rich-text-editor__toolbar-group">
+            <ToolbarButton
+              title="Blockquote"
+              active={state.isBlockquote}
+              onClick={() => editor.chain().focus().toggleBlockquote().run()}
+            >
+              <Captioned icon="quote" caption={labels.captionQuote} />
+            </ToolbarButton>
+            <ToolbarButton
+              title="Horizontal rule"
+              onClick={() => editor.chain().focus().setHorizontalRule().run()}
+            >
+              <Captioned icon="rule" caption={labels.captionRule} />
+            </ToolbarButton>
+            <ToolbarButton
+              title={state.isPageBreak ? labels.removePageBreak : labels.pageBreak}
+              active={state.isPageBreak}
+              onClick={() =>
+                state.isPageBreak
+                  ? editor.chain().focus().togglePageBreakBefore().run()
+                  : editor.chain().focus().insertPageBreak().run()
+              }
+            >
+              <Captioned icon="pageBreak" caption={labels.captionPageBreak} />
+            </ToolbarButton>
+          </div>
+
+          <div className="rich-text-editor__toolbar-group">
+            <ToolbarButton
+              title="Insert image"
+              onClick={onImageRequest ? () => onImageRequest(editor) : addImage}
+            >
+              <Captioned icon="image" caption={labels.captionImage} />
+            </ToolbarButton>
+            <ToolbarButton
+              title={labels.insertVector}
+              active={state.isVector}
+              onClick={() => editor.chain().focus().insertVectorIllustration().run()}
+            >
+              <Captioned icon="pen" caption={labels.captionVector} />
+            </ToolbarButton>
+            {state.isVector || state.isImage
+              ? // How the text treats the selected picture / illustration; its left/center/right
+                // placement is the align group, and up/down the page is drag and drop.
+                ['none', 'left', 'right'].map((wrap) => (
+                  <ToolbarButton
+                    key={wrap}
+                    title={labels[`wrap${wrap[0].toUpperCase()}${wrap.slice(1)}`]}
+                    active={state.vectorWrap === wrap}
+                    onClick={() =>
+                      editor.chain().focus().updateAttributes(state.isImage ? 'image' : 'vectorIllustration', { wrap }).run()
+                    }
+                  >
+                    <Captioned icon={`wrap${wrap[0].toUpperCase()}${wrap.slice(1)}`} caption={labels[`captionWrap${wrap[0].toUpperCase()}${wrap.slice(1)}`]} />
+                  </ToolbarButton>
+                ))
+              : null}
+            <ToolbarButton title="Insert link" active={state.isLink} onClick={setLink}>
+              <Captioned icon="link" caption={labels.captionLink} />
+            </ToolbarButton>
+          </div>
+
+          <div className="rich-text-editor__toolbar-group">
+            <ToolbarButton
+              title={labels.insertTable}
+              onClick={() =>
+                editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
+              }
+            >
+              <Captioned icon="table" caption={labels.captionTable} />
+            </ToolbarButton>
+            <ToolbarButton
+              title={labels.addColumnBefore}
+              disabled={!state.isTable}
+              onClick={() => editor.chain().focus().addColumnBefore().run()}
+            >
+              <Captioned icon="colBefore" caption={labels.captionColBefore} />
+            </ToolbarButton>
+            <ToolbarButton
+              title={labels.addColumnAfter}
+              disabled={!state.isTable}
+              onClick={() => editor.chain().focus().addColumnAfter().run()}
+            >
+              <Captioned icon="colAfter" caption={labels.captionColAfter} />
+            </ToolbarButton>
+            <ToolbarButton
+              title={labels.deleteColumn}
+              disabled={!state.isTable}
+              onClick={() => editor.chain().focus().deleteColumn().run()}
+            >
+              <Captioned icon="colDelete" caption={labels.captionColDelete} />
+            </ToolbarButton>
+            <ToolbarButton
+              title={labels.addRowBefore}
+              disabled={!state.isTable}
+              onClick={() => editor.chain().focus().addRowBefore().run()}
+            >
+              <Captioned icon="rowBefore" caption={labels.captionRowBefore} />
+            </ToolbarButton>
+            <ToolbarButton
+              title={labels.addRowAfter}
+              disabled={!state.isTable}
+              onClick={() => editor.chain().focus().addRowAfter().run()}
+            >
+              <Captioned icon="rowAfter" caption={labels.captionRowAfter} />
+            </ToolbarButton>
+            <ToolbarButton
+              title={labels.deleteRow}
+              disabled={!state.isTable}
+              onClick={() => editor.chain().focus().deleteRow().run()}
+            >
+              <Captioned icon="rowDelete" caption={labels.captionRowDelete} />
+            </ToolbarButton>
+            <ToolbarButton
+              title={labels.deleteTable}
+              disabled={!state.isTable}
+              onClick={() => editor.chain().focus().deleteTable().run()}
+            >
+              <Captioned icon="tableDelete" caption={labels.captionTableDelete} />
+            </ToolbarButton>
+          </div>
+
+          <TablePropertiesPanel
+            labels={labels}
+            editor={editor}
+            disabled={!state.isTable}
+            attrs={state.tableAttrs}
+          />
+          </>
+        ) : null}
+        {current === 'fields' ? (
+          <>
+          {insertExtras ? (
+            // Host-supplied insert tools (merge-field placeholders, signature anchors) —
+            // their own tab, because they are the host's vocabulary rather than the
+            // editor's, and a Word user looks for them under a heading of their own.
+            <div className="legal-template-editor__insert-extras">{insertExtras}</div>
+          ) : null}
+          </>
+        ) : null}
+        {current === 'review' ? (
+          <>
+          {onComment || onChangeWithAI ? (
+            <div className="rich-text-editor__toolbar-group">
+              {onComment ? (
+                <ToolbarButton
+                  title={state.canComment ? labels.addComment : labels.addCommentNeedsSelection}
+                  disabled={!state.canComment}
+                  onClick={onComment}
+                >
+                  <span className="rich-text-editor__icon-comment" aria-hidden="true" />
+                </ToolbarButton>
+              ) : null}
+              {onChangeWithAI ? (
+                <ToolbarButton title={labels.changeWithAI} onClick={onChangeWithAI}>
+                  ✨
+                </ToolbarButton>
+              ) : null}
+            </div>
+          ) : null}
+          </>
+        ) : null}
       </div>
     </div>
+    )
   )
 }
 
@@ -1105,7 +1239,7 @@ const LegalListNesting = Extension.create({
  *   for tracked deletions) and re-added for `<s>`/`<strike>` only, plus the insertion /
  *   deletion / comment marks and the TrackChangesExtension. Off (template mode) → plain edit.
  */
-const buildExtensions = (placeholder, trackChanges, placeholderSuggestion, knownTokens) => {
+const buildExtensions = (placeholder, trackChanges, placeholderSuggestion, knownTokens, labels) => {
   const redline = Boolean(trackChanges?.enabled)
   return [
     // StarterKit (v3.28) now bundles Link + Underline. We register our own configured
@@ -1148,6 +1282,8 @@ const buildExtensions = (placeholder, trackChanges, placeholderSuggestion, known
     HeadingNumbering,
     PageView,
     ParagraphSpacing,
+    // A real <svg> block with SVG-Edit's canvas behind it; the engine loads on first edit.
+    VectorIllustration.configure({ labels }),
     Highlight.configure({
       multicolor: false,
     }),
@@ -1443,6 +1579,7 @@ const TipTapEditor = ({
   commentMode: commentModeProp,
   onRequestComment,
   onImageRequest,
+  uploadImage,
   onChangeWithAI,
   commentOnly,
   toolbarExtras,
@@ -1525,8 +1662,14 @@ const TipTapEditor = ({
     return () => window.removeEventListener('keydown', onKey)
   }, [isFullscreen])
 
+  // The editor's own paste/drop handlers are configured once; they read these refs so the
+  // latest editor instance and `uploadImage` prop are always the ones used.
+  const editorRef = useRef(null)
+  const uploadImageRef = useRef(uploadImage)
+  uploadImageRef.current = uploadImage
+
   const editor = useEditor({
-    extensions: buildExtensions(placeholder, trackChanges, placeholderSuggestion, knownTokens),
+    extensions: buildExtensions(placeholder, trackChanges, placeholderSuggestion, knownTokens, labels),
     // The editor itself only ever sees the HTML — the page-setup marker is stripped here
     // and re-attached on every emit.
     content: parsePageSetupMarker(content).html,
@@ -1535,6 +1678,25 @@ const TipTapEditor = ({
       attributes: {
         class: 'rich-text-editor__prose legal-template-editor__prose',
         style: `min-height: ${minHeight || 200}px`,
+      },
+      // Pasted or dropped picture files go through the same intake as the toolbar button
+      // (downscale, then the host's uploadImage or inline). Text pastes fall through.
+      handlePaste: (view, event) => {
+        const files = imageFilesOf(event.clipboardData)
+        if (!files.length) return false
+        event.preventDefault()
+        insertImageFiles(editorRef.current, files, uploadImageRef.current)
+        return true
+      },
+      handleDrop: (view, event, _slice, moved) => {
+        if (moved) return false
+        const files = imageFilesOf(event.dataTransfer)
+        if (!files.length) return false
+        event.preventDefault()
+        const drop = view.posAtCoords({ left: event.clientX, top: event.clientY })
+        if (drop) editorRef.current?.commands.setTextSelection(drop.pos)
+        insertImageFiles(editorRef.current, files, uploadImageRef.current)
+        return true
       },
     },
     onUpdate: ({ editor: ed }) => {
@@ -1546,10 +1708,17 @@ const TipTapEditor = ({
     },
   })
 
+  editorRef.current = editor
+  // The toolbar's file picker reads the host's uploader from here (imageIntake.js).
+  useEffect(() => {
+    if (!editorCanCommand(editor)) return
+    editor.storage.imageIntake = { uploadImage }
+  }, [editor, uploadImage])
+
   // The page view paginates on screen from the same geometry the paper is drawn with, so a
   // margin change in the layout tool moves the page breaks as well as the padding.
   useEffect(() => {
-    if (!editor || editor.isDestroyed) return
+    if (!editorCanCommand(editor)) return
     editor.commands.setPageView({ enabled: pageGuides, pageSetup })
   }, [editor, pageGuides, pageSetup])
 
@@ -1559,6 +1728,7 @@ const TipTapEditor = ({
   const handlePageSetup = (next) => {
     pageSetupRef.current = next
     setPageSetup(next)
+    // `editorCanCommand`, not just `!editor` — see the `setEditable` effect below.
     if (!editorCanCommand(editor)) return
 
     // Tables hold absolute pixel column widths, so a page that just got wider or narrower
@@ -1636,6 +1806,18 @@ const TipTapEditor = ({
   }, [editor])
 
   useEffect(() => {
+    // The same teardown guard as the effects above, and the one that was
+    // missing. `setEditable` re-emits `update`, whose listeners reach
+    // `editor.commands` — a getter that dereferences a null commandManager once
+    // TipTap has destroyed the instance, throwing "Cannot read properties of
+    // null (reading 'commands')" out of an effect where nothing catches it and
+    // taking the whole React root down with it.
+    //
+    // This is the effect that fires exactly when a document review moves from
+    // ACCEPTED to IN REVIEW: `editable` flips false -> true on a tree that has
+    // just remounted, so the destroyed instance and the new prop meet here. The
+    // lawyer's console went white; the status transition had already saved, so
+    // a reload brought it back — with nothing on screen to say so.
     if (!editorCanCommand(editor)) return
     editor.setEditable(editable !== false)
   }, [editor, editable])
@@ -1803,6 +1985,7 @@ TipTapEditor.propTypes = {
   // Override the image toolbar button — called with the editor so the host app can open its
   // own media picker and insert via editor.chain().setImage(...). Defaults to a URL prompt.
   onImageRequest: PropTypes.func,
+  uploadImage: PropTypes.func,
   // When provided, shows a "Change with AI" toolbar button that calls this.
   onChangeWithAI: PropTypes.func,
   // Review "comment only" stage: hide formatting tools, keep only commenting.

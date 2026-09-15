@@ -1,5 +1,6 @@
 import Image from '@tiptap/extension-image'
 import { mergeAttributes } from '@tiptap/core'
+import { normalizeWrap, parseWrapFromElement, vectorPresentationStyle } from './vectorLayout.js'
 
 function parsePixelDimension(value) {
   if (value == null || value === '') return null
@@ -7,30 +8,19 @@ function parsePixelDimension(value) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null
 }
 
-/** Inline styles persisted on <img> so Preview matches the editor (no node view). */
+/**
+ * Inline styles persisted on <img> so Preview matches the editor (no node view). The same
+ * placement model as the vector illustration (vectorLayout.js): alignment for a block of
+ * its own, or a float with the text wrapping around it.
+ */
 export function legalImagePresentationStyle(attrs) {
   const align = attrs.align === 'center' || attrs.align === 'right' ? attrs.align : 'left'
-  const width = parsePixelDimension(attrs.width)
-  const height = parsePixelDimension(attrs.height)
-
-  const parts = ['display:block', 'max-width:100%']
-
-  if (width) {
-    parts.push(`width:${width}px`)
-    parts.push(height ? `height:${height}px` : 'height:auto')
-  } else {
-    parts.push('width:fit-content', 'height:auto')
-  }
-
-  if (align === 'center') {
-    parts.push('margin-left:auto', 'margin-right:auto')
-  } else if (align === 'right') {
-    parts.push('margin-left:auto', 'margin-right:0')
-  } else {
-    parts.push('margin-left:0', 'margin-right:auto')
-  }
-
-  return `${parts.join(';')};`
+  return vectorPresentationStyle({
+    align,
+    width: parsePixelDimension(attrs.width),
+    height: parsePixelDimension(attrs.height),
+    wrap: attrs.wrap,
+  })
 }
 
 function parseAlignFromElement(element) {
@@ -50,29 +40,40 @@ function parseAlignFromElement(element) {
   return 'left'
 }
 
-export function applyLegalImageAlign(dom, align) {
+export function applyLegalImageAlign(dom, align, wrap = 'none') {
   const value = align === 'center' || align === 'right' ? align : 'left'
+  const mode = normalizeWrap(wrap)
 
   dom.style.display = 'block'
   dom.style.width = 'fit-content'
   dom.style.maxWidth = '100%'
 
-  if (value === 'center') {
-    dom.style.marginLeft = 'auto'
-    dom.style.marginRight = 'auto'
-  } else if (value === 'right') {
-    dom.style.marginLeft = 'auto'
-    dom.style.marginRight = '0'
+  if (mode === 'left' || mode === 'right') {
+    // The resize wrapper is what floats; the picture inside stays a plain block.
+    dom.style.float = mode
+    dom.style.margin = mode === 'left' ? '0.25rem 1rem 0.5rem 0' : '0.25rem 0 0.5rem 1rem'
   } else {
-    dom.style.marginLeft = '0'
-    dom.style.marginRight = 'auto'
+    dom.style.float = ''
+    dom.style.margin = ''
+    if (value === 'center') {
+      dom.style.marginLeft = 'auto'
+      dom.style.marginRight = 'auto'
+    } else if (value === 'right') {
+      dom.style.marginLeft = 'auto'
+      dom.style.marginRight = '0'
+    } else {
+      dom.style.marginLeft = '0'
+      dom.style.marginRight = 'auto'
+    }
   }
 
   dom.dataset.align = value
+  dom.dataset.wrap = mode
 }
 
 function syncImagePresentation(img, attrs) {
-  img.style.cssText = legalImagePresentationStyle(attrs)
+  // Inside the (floating) wrapper the <img> itself never floats.
+  img.style.cssText = legalImagePresentationStyle({ ...attrs, wrap: 'none' })
 }
 
 /**
@@ -118,23 +119,31 @@ export const LegalDocumentImage = Image.extend({
         parseHTML: (element) => parseAlignFromElement(element),
         renderHTML: () => ({}),
       },
+      /** How text treats the picture: 'none' (above/below), 'left' or 'right' (wraps around). */
+      wrap: {
+        default: 'none',
+        parseHTML: (element) => parseWrapFromElement(element),
+        renderHTML: () => ({}),
+      },
     }
   },
 
   renderHTML({ HTMLAttributes }) {
     const align = HTMLAttributes.align || 'left'
+    const wrap = normalizeWrap(HTMLAttributes.wrap)
     const width = parsePixelDimension(HTMLAttributes.width)
     const height = parsePixelDimension(HTMLAttributes.height)
 
-    const { align: _align, width: _width, height: _height, style: _style, ...rest } = HTMLAttributes
+    const { align: _align, wrap: _wrap, width: _width, height: _height, style: _style, ...rest } = HTMLAttributes
 
     return [
       'img',
       mergeAttributes(this.options.HTMLAttributes, rest, {
         'data-align': align,
+        'data-wrap': wrap,
         ...(width ? { width } : {}),
         ...(height ? { height } : {}),
-        style: legalImagePresentationStyle({ align, width, height }),
+        style: legalImagePresentationStyle({ align, width, height, wrap }),
       }),
     ]
   },
@@ -150,7 +159,7 @@ export const LegalDocumentImage = Image.extend({
       const dom = nodeView.dom
       const img = dom.querySelector('img')
 
-      applyLegalImageAlign(dom, props.node.attrs.align)
+      applyLegalImageAlign(dom, props.node.attrs.align, props.node.attrs.wrap)
 
       if (img instanceof HTMLImageElement) {
         syncImagePresentation(img, {
@@ -179,7 +188,7 @@ export const LegalDocumentImage = Image.extend({
           : true
 
         if (result !== false && updatedNode.type.name === this.name) {
-          applyLegalImageAlign(dom, updatedNode.attrs.align)
+          applyLegalImageAlign(dom, updatedNode.attrs.align, updatedNode.attrs.wrap)
           if (img instanceof HTMLImageElement) {
             syncImagePresentation(img, {
               align: updatedNode.attrs.align,
@@ -208,9 +217,17 @@ export function getLegalImageAlign(editor) {
   return align === 'center' || align === 'right' ? align : 'left'
 }
 
+// The vector illustration block aligns like an image (its own `align` attribute, not
+// TextAlign). Named by string so this module does not import the node — it is imported
+// by the node's view for legalImagePresentationStyle.
+const VECTOR_NODE = 'vectorIllustration'
+
 export function setLegalContentAlign(editor, align) {
   if (editor.isActive('image')) {
     return setLegalImageAlign(editor, align)
+  }
+  if (editor.isActive(VECTOR_NODE)) {
+    return editor.chain().focus().updateAttributes(VECTOR_NODE, { align }).run()
   }
   return editor.chain().focus().setTextAlign(align).run()
 }
@@ -218,6 +235,7 @@ export function setLegalContentAlign(editor, align) {
 export function isLegalContentAlignActive(editor, align) {
   const imageAlign = getLegalImageAlign(editor)
   if (imageAlign) return imageAlign === align
+  if (editor.isActive(VECTOR_NODE)) return (editor.getAttributes(VECTOR_NODE).align || 'center') === align
   return editor.isActive({ textAlign: align })
 }
 
@@ -233,6 +251,7 @@ export function serializeLegalDocumentEditorHtml(editor) {
     imageMeta.push({
       src: String(node.attrs.src),
       align: node.attrs.align || 'left',
+      wrap: normalizeWrap(node.attrs.wrap),
       width: parsePixelDimension(node.attrs.width),
       height: parsePixelDimension(node.attrs.height),
     })
@@ -248,6 +267,7 @@ export function serializeLegalDocumentEditorHtml(editor) {
     if (!img) return
 
     img.setAttribute('data-align', meta.align)
+    img.setAttribute('data-wrap', meta.wrap)
     if (meta.width) img.setAttribute('width', String(meta.width))
     else img.removeAttribute('width')
     if (meta.height) img.setAttribute('height', String(meta.height))

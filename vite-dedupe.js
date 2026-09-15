@@ -31,8 +31,10 @@ export const documentEditorDedupe = [
   '@tiptap/pm',
   '@tiptap/react',
   '@tiptap/starter-kit',
+  '@svgedit/svgcanvas',
   'classnames',
   'docx',
+  'dompurify',
   'jszip',
   'prop-types',
   // Not imported directly, but @tiptap/pm re-exports these and a split version pair is the

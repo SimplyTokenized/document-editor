@@ -22,6 +22,7 @@
  * can keep reviewing after a round-trip through Word.
  */
 import JSZip from 'jszip'
+import { VECTOR_ATTR, sanitizeSvg } from './vectorSvg.js'
 
 const W_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
 const A_NS = 'http://schemas.openxmlformats.org/drawingml/2006/main'
@@ -31,6 +32,10 @@ const REL_NS = 'http://schemas.openxmlformats.org/package/2006/relationships'
 const EMU_PER_PX = 9525 // 914400 EMU per inch / 96 px
 
 const IMAGE_MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', bmp: 'image/bmp' }
+// Word keeps an SVG picture as the vector part plus a raster fallback, linked from the
+// blip through this extension (the GUID is Word's, fixed).
+const ASVG_NS = 'http://schemas.microsoft.com/office/drawing/2016/SVG/main'
+const SVG_BLIP_EXT_URI = '{96DAC541-7B7A-43D3-8B79-37D633B846F1}'
 
 // ─── XML helpers (namespace-aware) ──────────────────────────────────────────────
 const childrenOf = (node, localName) => {
@@ -132,19 +137,47 @@ const hashString = (str) => {
 const drawingToHtml = (drawing, ctx) => {
   const blip = drawing.getElementsByTagNameNS(A_NS, 'blip')[0]
   const rId = blip && blip.getAttributeNS(R_NS, 'embed')
+  const extent = drawing.getElementsByTagNameNS(WP_NS, 'extent')[0]
+  const cx = extent ? Number(extent.getAttribute('cx')) : 0
+  const cy = extent ? Number(extent.getAttribute('cy')) : 0
+  // A floating picture (wp:anchor with square wrap) keeps its side; everything else is in line.
+  const anchor = drawing.getElementsByTagNameNS(WP_NS, 'anchor')[0]
+  let wrap = 'none'
+  if (anchor && anchor.getElementsByTagNameNS(WP_NS, 'wrapSquare')[0]) {
+    const positionH = anchor.getElementsByTagNameNS(WP_NS, 'positionH')[0]
+    const alignEl = positionH && positionH.getElementsByTagNameNS(WP_NS, 'align')[0]
+    wrap = alignEl && alignEl.textContent.trim() === 'right' ? 'right' : 'left'
+  }
+
+  // The vector, when the picture has one: an editable illustration rather than its raster
+  // stand-in. Matched by namespace and the extension GUID, never by prefix.
+  const svgBlip = Array.from(blip?.getElementsByTagNameNS(A_NS, 'ext') || [])
+    .filter((ext) => ext.getAttribute('uri') === SVG_BLIP_EXT_URI)
+    .flatMap((ext) => Array.from(ext.getElementsByTagNameNS(ASVG_NS, 'svgBlip')))[0]
+  const svgId = svgBlip && svgBlip.getAttributeNS(R_NS, 'embed')
+  const svgText = svgId && ctx.svgs ? ctx.svgs.get(svgId) : null
+  if (svgText) {
+    const clean = sanitizeSvg(svgText)
+    if (clean) {
+      const width = cx > 0 ? Math.round(cx / EMU_PER_PX) : clean.width
+      const height = cy > 0 ? Math.round(cy / EMU_PER_PX) : clean.height
+      const svg = clean.svg
+        .replace(/\swidth="[^"]*"/, ` width="${width}"`)
+        .replace(/\sheight="[^"]*"/, ` height="${height}"`)
+      return `<figure ${VECTOR_ATTR}="1" data-align="center" data-wrap="${wrap}">${svg}</figure>`
+    }
+  }
+
   const src = rId && ctx.images ? ctx.images.get(rId) : null
   if (!src) {
     if (ctx.warnings && rId) ctx.warnings.push(`Image ${rId} could not be imported.`)
     return ''
   }
-  const extent = drawing.getElementsByTagNameNS(WP_NS, 'extent')[0]
-  const cx = extent ? Number(extent.getAttribute('cx')) : 0
-  const cy = extent ? Number(extent.getAttribute('cy')) : 0
   const size =
     cx > 0 && cy > 0
       ? ` width="${Math.round(cx / EMU_PER_PX)}" height="${Math.round(cy / EMU_PER_PX)}"`
       : ''
-  return `<img src="${src}"${size}>`
+  return `<img src="${src}"${size}${wrap === 'none' ? '' : ` data-wrap="${wrap}"`}>`
 }
 
 const runToHtml = (run, ctx = {}) => {
@@ -765,8 +798,10 @@ const tableToHtml = (tbl, ctx) => {
  */
 async function loadImages(zip, warnings) {
   const images = new Map()
+  // SVG parts are kept as text — they become inline vector illustrations, not <img>s.
+  const svgs = new Map()
   const relsXml = await zip.file('word/_rels/document.xml.rels')?.async('string')
-  if (!relsXml) return images
+  if (!relsXml) return { images, svgs }
   const rels = new DOMParser().parseFromString(relsXml, 'application/xml')
   const entries = Array.from(rels.getElementsByTagNameNS(REL_NS, 'Relationship'))
   await Promise.all(
@@ -776,6 +811,11 @@ async function loadImages(zip, warnings) {
       const target = (rel.getAttribute('Target') || '').replace(/^\//, '')
       const path = target.startsWith('word/') ? target : `word/${target.replace(/^\.\.\//, '')}`
       const ext = (path.split('.').pop() || '').toLowerCase()
+      if (ext === 'svg') {
+        const text = await zip.file(path)?.async('string')
+        if (text) svgs.set(id, text)
+        return
+      }
       const mime = IMAGE_MIME[ext]
       if (!mime) {
         warnings.push(`Image ${path.split('/').pop()} was skipped (${ext.toUpperCase()} is not supported).`)
@@ -785,7 +825,7 @@ async function loadImages(zip, warnings) {
       if (base64) images.set(id, `data:${mime};base64,${base64}`)
     }),
   )
-  return images
+  return { images, svgs }
 }
 
 export async function importDocxToHtml(file, { trackedChanges = false } = {}) {
@@ -820,7 +860,7 @@ export async function importDocxToHtml(file, { trackedChanges = false } = {}) {
     themeFonts,
     tracked: Boolean(trackedChanges),
     comments: buildCommentsLookup(commentsXml),
-    images: await loadImages(zip, warnings),
+    ...(await loadImages(zip, warnings)),
     warnings,
   }
   const html = blocksToHtml(body, ctx)

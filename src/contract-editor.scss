@@ -121,6 +121,64 @@
   background: var(--doc-editor-bg);
   overflow: hidden;
 
+  // Word's ribbon: a row of tabs above the tool row. The tabs are text, not
+  // buttons — an underline marks the open one, the way every ribbon does it —
+  // and undo/redo sit at the row's right end so they are never a tab away.
+  &__ribbon {
+    display: flex;
+    flex-direction: column;
+  }
+
+  &__ribbon-tabs {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.25rem;
+    padding: 0.25rem 0.75rem 0;
+    background: var(--doc-editor-bg);
+    border-bottom: 1px solid var(--doc-editor-border);
+  }
+
+  &__ribbon-tab {
+    padding: 0.4rem 0.65rem 0.45rem;
+    margin: 0;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    background: transparent;
+    color: var(--doc-editor-fg);
+    opacity: 0.75;
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    line-height: 1.2;
+    cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+
+    &:hover {
+      opacity: 1;
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--doc-editor-primary);
+      outline-offset: -2px;
+    }
+
+    &--active {
+      color: var(--doc-editor-primary);
+      border-bottom-color: var(--doc-editor-primary);
+      font-weight: 600;
+      opacity: 1;
+    }
+  }
+
+  // Undo/redo, pushed to the far right of the tab row and lifted off the
+  // baseline so the group's border does not merge with the tab underline.
+  &__ribbon-quick {
+    display: inline-flex;
+    margin-left: auto;
+    margin-bottom: 0.25rem;
+  }
+
   &__toolbar {
     display: flex;
     flex-wrap: wrap;
@@ -161,6 +219,11 @@
     border: 1px solid var(--doc-editor-border);
     border-radius: var(--doc-editor-radius);
     overflow: hidden;
+  }
+
+  // The toolbar while an illustration is open: the slot the workspace's tools render into.
+  &__toolbar--vector .legal-template-editor__vector-tools {
+    display: contents;
   }
 
   &__toolbar-btn {
@@ -516,6 +579,7 @@
   &__icon-comment,
   &__icon-highlight,
   &__icon-page-break,
+  &__icon-vector,
   &__icon-align-left,
   &__icon-align-center,
   &__icon-align-right,
@@ -590,6 +654,79 @@
     content: '💬';
     font-size: 0.85rem;
     line-height: 1.2;
+  }
+
+  // Text-wrap modes for an illustration: a box with lines below / beside it.
+  &__icon-wrap-none,
+  &__icon-wrap-left,
+  &__icon-wrap-right {
+    display: inline-block;
+    width: 1rem;
+    height: 1rem;
+    position: relative;
+  }
+
+  &__icon-wrap-none::before,
+  &__icon-wrap-left::before,
+  &__icon-wrap-right::before {
+    content: '';
+    position: absolute;
+    width: 0.45rem;
+    height: 0.45rem;
+    border: 1.5px solid currentColor;
+    border-radius: 1px;
+  }
+
+  &__icon-wrap-none::before {
+    top: 0;
+    left: 0.28rem;
+  }
+
+  &__icon-wrap-none::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0.05rem;
+    height: 0.3rem;
+    background: repeating-linear-gradient(currentColor 0 1.5px, transparent 1.5px 3px);
+  }
+
+  &__icon-wrap-left::before {
+    top: 0.15rem;
+    left: 0;
+  }
+
+  &__icon-wrap-left::after {
+    content: '';
+    position: absolute;
+    top: 0.15rem;
+    right: 0;
+    width: 0.4rem;
+    height: 0.6rem;
+    background: repeating-linear-gradient(currentColor 0 1.5px, transparent 1.5px 3px);
+  }
+
+  &__icon-wrap-right::before {
+    top: 0.15rem;
+    right: 0;
+  }
+
+  &__icon-wrap-right::after {
+    content: '';
+    position: absolute;
+    top: 0.15rem;
+    left: 0;
+    width: 0.4rem;
+    height: 0.6rem;
+    background: repeating-linear-gradient(currentColor 0 1.5px, transparent 1.5px 3px);
+  }
+
+  // A pen nib — the vector illustration.
+  &__icon-vector::before {
+    content: '✒';
+    font-size: 0.95rem;
+    line-height: 1;
   }
 
   // A sheet with a dashed line across it — the break.
@@ -1910,4 +2047,250 @@
     border-left: 0;
     border-top: 1px solid var(--legal-editor-border, #e2e8f0);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Vector illustration block (vectorIllustration.js) and its SVG-Edit workspace.
+// ---------------------------------------------------------------------------
+.legal-template-editor .ProseMirror .legal-vector,
+.legal-vector {
+  position: relative;
+  margin: 0.5rem 0;
+
+  &__preview svg {
+    display: block;
+    max-width: 100%;
+    height: auto;
+  }
+
+  // The overlay button: visible on hover and while the block is selected.
+  &__edit {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    padding: 0.35rem 0.6rem;
+    border: 1px solid var(--doc-editor-border);
+    border-radius: var(--doc-editor-radius);
+    background: var(--doc-editor-bg);
+    color: var(--doc-editor-fg);
+    box-shadow: var(--doc-editor-shadow);
+    font: inherit;
+    font-size: 0.8125rem;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+
+  &:hover &__edit,
+  &--selected &__edit,
+  &__edit:focus-visible {
+    opacity: 1;
+  }
+
+  &--selected {
+    outline: 2px solid var(--doc-editor-primary);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  // The workspace takes the paper's full width whatever the illustration's placement.
+  &--editing {
+    float: none;
+    clear: both;
+    width: 100%;
+    margin-left: 0;
+    margin-right: 0;
+  }
+}
+
+// A wrapped illustration must not leave the paper's last block hanging beside it.
+.legal-template-editor .ProseMirror::after {
+  content: '';
+  display: block;
+  clear: both;
+}
+
+// The workspace is the artboard itself, on the paper; its tools live in the editor's main
+// toolbar (portalled into `.legal-template-editor__vector-tools`) — nothing framed.
+.legal-vector-workspace {
+  // The paper is scaled with CSS `zoom` (the zoom control / auto-fit). SVG-Edit maps the
+  // pointer through the SVG's screen matrix, which CSS zoom does not report, so the grips
+  // and rubber band drift from the shapes. Undo the paper's zoom here: the artboard is
+  // always edited at 1:1.
+  zoom: calc(1 / var(--legal-zoom, 1));
+  outline: 0;
+  color: var(--doc-editor-fg);
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 0.8125rem;
+  line-height: 1.2;
+
+  // The tool row: the same groups as the formatting toolbar, laid out like it.
+  &__toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+  }
+
+  &__props {
+    gap: 0.5rem;
+    padding: 0 0.5rem;
+    border: 0;
+  }
+
+  &__prop {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    color: var(--doc-editor-fg-muted);
+    font-size: 0.75rem;
+
+    input[type='color'] {
+      width: 1.6rem;
+      height: 1.6rem;
+      padding: 0;
+      border: 1px solid var(--doc-editor-border);
+      border-radius: 0.25rem;
+      background: none;
+      cursor: pointer;
+    }
+
+    input[type='number'] {
+      width: 3.6rem;
+      height: 1.6rem;
+      padding: 0 0.3rem;
+      border: 1px solid var(--doc-editor-border);
+      border-radius: 0.25rem;
+      background: var(--doc-editor-bg);
+      color: var(--doc-editor-fg);
+      font: inherit;
+    }
+  }
+
+  &__actions {
+    margin-left: auto;
+    gap: 0.25rem;
+    padding: 0.15rem;
+    border: 0;
+  }
+
+  &__apply,
+  &__cancel {
+    padding: 0.35rem 0.7rem;
+    border: 1px solid var(--doc-editor-border);
+    border-radius: var(--doc-editor-radius);
+    background: var(--doc-editor-bg);
+    color: var(--doc-editor-fg);
+    font: inherit;
+    font-size: 0.8125rem;
+    cursor: pointer;
+  }
+
+  &__apply {
+    border-color: var(--doc-editor-primary);
+    background: var(--doc-editor-primary);
+    color: var(--doc-editor-on-primary);
+
+    &:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+  }
+
+  // The artboard sits straight on the paper; a large one scrolls inside its box.
+  &__workarea {
+    position: relative;
+    overflow: auto;
+    max-height: 80vh;
+  }
+
+  &__canvas {
+    position: relative;
+    min-height: 200px;
+
+    // svgcanvas' root: it sets x/y offsets and overflow=visible on it. The dashed line is
+    // the artboard's edge on the paper while it is being drawn on.
+    #svgroot {
+      display: block;
+      overflow: hidden;
+      outline: 1px dashed var(--doc-editor-border-subtle);
+      outline-offset: -1px;
+    }
+  }
+
+  // The text tool types through a real input, kept out of sight.
+  &__text-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  &__spinner {
+    display: block;
+    margin: 2rem auto;
+  }
+
+  &__error {
+    padding: 0.5rem 0.75rem;
+    color: #b42318;
+    font-size: 0.8125rem;
+  }
+
+  &--loading {
+    min-height: 120px;
+  }
+}
+
+// Tool glyphs of the workspace toolbar.
+.legal-vector-icon {
+  display: inline-block;
+  min-width: 1rem;
+  font-size: 0.95rem;
+  line-height: 1;
+
+  &--select::before { content: '↖'; }
+  &--points::before { content: '⌖'; }
+  &--pen::before { content: '✒'; }
+  &--rect::before { content: '▭'; }
+  &--circle::before { content: '○'; }
+  &--ellipse::before { content: '⬭'; }
+  &--front::before { content: '⤒'; }
+  &--back::before { content: '⤓'; }
+}
+
+// Track-changes markers on a whole illustration (redlineDiff / TrackChangesExtension).
+.legal-template-editor .ProseMirror figure[data-vector-illustration][data-block-deleted] {
+  opacity: 0.45;
+  outline: 2px dashed #b42318;
+  outline-offset: 2px;
+}
+
+// Ribbon buttons with a caption under the icon (Insert tab): the icon on top, the name
+// beneath, as Word names its Insert buttons — a glyph alone did not say what it inserts.
+.rich-text-editor__toolbar-btn:has(> .rich-text-editor__btn-caption) {
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 3.25rem;
+  padding: 0.3rem 0.45rem 0.25rem;
+  line-height: 1;
+}
+
+.rich-text-editor__btn-caption {
+  font-size: 0.625rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  color: var(--doc-editor-fg-muted);
+
+  .rich-text-editor__toolbar-btn--active & {
+    color: inherit;
+  }
+}
+
+.rich-text-editor__svg-icon {
+  display: block;
+  flex: none;
 }
