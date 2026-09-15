@@ -58,6 +58,14 @@ import { getRichTextPlainText } from './extensions/richText.js'
 import './extensions/tiptap-styles.css'
 import './contract-editor.scss'
 
+/**
+ * Can this editor take commands right now? `isDestroyed` alone is not enough: under React
+ * StrictMode (and on a consumer remounting via `key`) an effect can run against an instance
+ * whose command manager is already gone while its view still reports alive — reading
+ * `editor.commands` then throws "Cannot read properties of null (reading 'commands')".
+ */
+const editorCanCommand = (editor) => Boolean(editor && !editor.isDestroyed && editor.commandManager)
+
 /** Framework-neutral inline spinner (replaces the host app's UI-kit spinner). */
 const Spinner = () => <span className="contract-editor__spinner" aria-hidden="true" />
 
@@ -68,6 +76,7 @@ const Spinner = () => <span className="contract-editor__spinner" aria-hidden="tr
  * mode it's an ordinary setContent.
  */
 const applyEditorContent = (editor, html, { skipTracking = false, emitUpdate = false } = {}) => {
+  if (!editorCanCommand(editor)) return
   const safeHtml = html || '<p></p>'
   if (!skipTracking) {
     editor.commands.setContent(safeHtml, { emitUpdate })
@@ -335,7 +344,7 @@ const selectToolbarState = (ctx) => {
   // still subscribed). The object is still there, but its view and state are
   // null, so `editor.can()` dereferences null and takes the whole React root
   // down. Treat destroyed exactly like absent.
-  if (!ctx.editor || ctx.editor.isDestroyed) return EMPTY_TOOLBAR_STATE
+  if (!editorCanCommand(ctx.editor)) return EMPTY_TOOLBAR_STATE
   const heading = ctx.editor.isActive('heading') ? ctx.editor.getAttributes('heading') : null
   const textStyle = ctx.editor.getAttributes('textStyle')
   return {
@@ -1676,14 +1685,14 @@ const TipTapEditor = ({
   editorRef.current = editor
   // The toolbar's file picker reads the host's uploader from here (imageIntake.js).
   useEffect(() => {
-    if (!editor || editor.isDestroyed) return
+    if (!editorCanCommand(editor)) return
     editor.storage.imageIntake = { uploadImage }
   }, [editor, uploadImage])
 
   // The page view paginates on screen from the same geometry the paper is drawn with, so a
   // margin change in the layout tool moves the page breaks as well as the padding.
   useEffect(() => {
-    if (!editor || editor.isDestroyed) return
+    if (!editorCanCommand(editor)) return
     editor.commands.setPageView({ enabled: pageGuides, pageSetup })
   }, [editor, pageGuides, pageSetup])
 
@@ -1694,7 +1703,7 @@ const TipTapEditor = ({
     pageSetupRef.current = next
     setPageSetup(next)
     // `isDestroyed`, not just `!editor` — see the `setEditable` effect below.
-    if (!editor || editor.isDestroyed) return
+    if (!editorCanCommand(editor)) return
 
     // Tables hold absolute pixel column widths, so a page that just got wider or narrower
     // leaves them at their old size — a white strip down one side that no margin setting can
@@ -1721,14 +1730,14 @@ const TipTapEditor = ({
     // throwing "Cannot read properties of null (reading 'commands')" out of an
     // effect, where nothing catches it. That takes the whole page down: the
     // host's review screen rendered as a blank white document.
-    if (!editor || editor.isDestroyed) return
+    if (!editorCanCommand(editor)) return
     editor.commands.setKnownTokens(Array.isArray(knownTokens) ? knownTokens : null)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by value, not identity
   }, [editor, knownTokensKey])
 
   useEffect(() => {
     // Same StrictMode teardown guard as the `setKnownTokens` effect above.
-    if (!editor || editor.isDestroyed || content === undefined) return
+    if (!editorCanCommand(editor) || content === undefined) return
     // Skip echo from our own onUpdate — resetting here collapses blank lines.
     if (content === lastEmittedHtmlRef.current) return
     // While typing, the parent may lag one frame behind the editor.
@@ -1760,7 +1769,7 @@ const TipTapEditor = ({
   useEffect(() => {
     // Same StrictMode teardown guard as the effects above — `refitTables…`
     // reads `editor.state`, which is gone on a destroyed instance.
-    if (!editor || editor.isDestroyed) return
+    if (!editorCanCommand(editor)) return
     // Same repair-only clamp as the external-content effect, for the INITIAL content the
     // editor was created with (that effect only fires on later prop changes).
     refitTablesToPrintableWidth(editor, pageSetupRef.current, { onlyOverflowing: true })
@@ -1781,7 +1790,7 @@ const TipTapEditor = ({
     // just remounted, so the destroyed instance and the new prop meet here. The
     // lawyer's console went white; the status transition had already saved, so
     // a reload brought it back — with nothing on screen to say so.
-    if (!editor || editor.isDestroyed) return
+    if (!editorCanCommand(editor)) return
     editor.setEditable(editable !== false)
   }, [editor, editable])
 
