@@ -24,6 +24,11 @@ import {
   ExternalHyperlink,
   HeadingLevel,
   HighlightColor,
+  HorizontalPositionAlign,
+  HorizontalPositionRelativeFrom,
+  TextWrappingSide,
+  TextWrappingType,
+  VerticalPositionRelativeFrom,
   ImageRun,
   InsertedTextRun,
   LevelFormat,
@@ -38,6 +43,7 @@ import {
   WidthType,
 } from 'docx'
 import { parseCommentPayload } from './changeCommentPayload.js'
+import { VECTOR_ATTR, rasterizeSvg, svgSize } from './vectorSvg.js'
 import { commonHeadingTextStyle, headingNumbersFor } from './headingNumbers.js'
 
 /**
@@ -215,6 +221,28 @@ const imageNaturalSize = (bytes, type) => {
   return null
 }
 
+/**
+ * Word's square text wrap for a picture the editor floats left or right (`data-wrap`):
+ * anchored to its paragraph at the margin, text flowing on the other side. `undefined`
+ * for an in-line block. Margins are EMU (914400 per inch).
+ */
+const floatingFor = (el) => {
+  const wrap = el.getAttribute('data-wrap')
+  if (wrap !== 'left' && wrap !== 'right') return undefined
+  return {
+    horizontalPosition: {
+      relative: HorizontalPositionRelativeFrom.MARGIN,
+      align: wrap === 'left' ? HorizontalPositionAlign.LEFT : HorizontalPositionAlign.RIGHT,
+    },
+    verticalPosition: { relative: VerticalPositionRelativeFrom.PARAGRAPH, offset: 0 },
+    wrap: {
+      type: TextWrappingType.SQUARE,
+      side: wrap === 'left' ? TextWrappingSide.RIGHT : TextWrappingSide.LEFT,
+    },
+    margins: { top: 45720, bottom: 91440, left: wrap === 'left' ? 0 : 114300, right: wrap === 'left' ? 114300 : 0 },
+  }
+}
+
 const buildImageRun = (imgEl) => {
   const decoded = decodeBase64Image(imgEl.getAttribute('src'))
   if (!decoded) return null // External (non-embedded) image URLs aren't fetched/embedded.
@@ -240,10 +268,55 @@ const buildImageRun = (imgEl) => {
     type: decoded.type,
     data: decoded.bytes,
     transformation: { width, height },
+    floating: floatingFor(imgEl),
   })
 }
 
 const hasClass = (node, name) => node.classList && node.classList.contains(name)
+
+// ── Vector illustrations ──────────────────────────────────────────────────────────
+// Word stores an SVG picture as the vector plus a mandatory raster fallback (what Word
+// Online, LibreOffice and Google Docs show). Rasterising is async and the block walk is
+// not, so every figure is prepared up front into this map, keyed by element.
+let vectorRuns = new Map()
+const isVectorFigure = (el) => el.tagName === 'FIGURE' && el.hasAttribute(VECTOR_ATTR)
+
+const prepareVectorFallbacks = async (root) => {
+  const figures = Array.from(root.querySelectorAll(`figure[${VECTOR_ATTR}]`))
+  const prepared = new Map()
+  await Promise.all(
+    figures.map(async (figure) => {
+      const svgEl = figure.querySelector('svg')
+      if (!svgEl) return
+      const svg = new XMLSerializer().serializeToString(svgEl)
+      try {
+        const png = await rasterizeSvg(svg, { scale: 3 })
+        prepared.set(figure, { svg, png })
+      } catch (err) {
+        console.warn('[docx export] illustration could not be rasterised, skipped:', err)
+      }
+    }),
+  )
+  return prepared
+}
+
+const buildVectorRun = (figure) => {
+  const prepared = vectorRuns.get(figure)
+  if (!prepared) return null
+  const natural = svgSize(prepared.svg)
+  const maxWidth = Math.max(100, Math.round(CONTENT_WIDTH_TWIPS / 15))
+  const svgEl = figure.querySelector('svg')
+  const shown = parseFloat(figure.style?.width || svgEl?.getAttribute('width') || '') || natural.width
+  const width = Math.min(shown, maxWidth)
+  const height = Math.round((width * natural.height) / natural.width)
+  return new ImageRun({
+    type: 'svg',
+    data: new TextEncoder().encode(prepared.svg),
+    fallback: { type: 'png', data: prepared.png },
+    transformation: { width: Math.round(width), height },
+    floating: floatingFor(figure),
+  })
+}
 
 /** Recursively walk inline content (text + b/i/u/s/mark/a/br/img), accumulating marks. The
  *  `rev` context (insertion/deletion) is inherited from an enclosing <ins>/<del> in tracked
@@ -634,6 +707,11 @@ function walkBlockElement(el) {
     const align = el.getAttribute('data-align') || el.style?.textAlign
     return [new Paragraph({ alignment: ALIGN_MAP[align] || undefined, children: [run] })]
   }
+  if (isVectorFigure(el)) {
+    const run = buildVectorRun(el)
+    if (!run) return []
+    return [new Paragraph({ alignment: ALIGN_MAP[el.getAttribute('data-align')] || AlignmentType.CENTER, children: [run] })]
+  }
   // Unrecognized wrapper (e.g. a stray <div>) — recurse into its children.
   return walkBlocks(el)
 }
@@ -697,6 +775,7 @@ export async function exportHtmlToDocx(
 
   const parsedDoc = new DOMParser().parseFromString(html || '<p></p>', 'text/html')
   headingNumbers = headingNumbersFor(parsedDoc.body)
+  vectorRuns = await prepareVectorFallbacks(parsedDoc.body)
   const children = walkBlocks(parsedDoc.body)
 
   // Comments are collected while walking the body above, so build them after walkBlocks ran.

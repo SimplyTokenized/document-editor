@@ -80,7 +80,7 @@ const numberHeadingsForPrint = (html) => {
   // zero-width space at the end gives print the same line, so the two paginate alike.
   root.querySelectorAll('p, h1, h2, h3, li, td, th, blockquote').forEach((el) => {
     const last = el.lastChild
-    const blank = !el.textContent && !el.querySelector('img, table')
+    const blank = !el.textContent && !el.querySelector('img, table, svg')
     if (blank || (last && last.nodeName === 'BR')) el.appendChild(parsed.createTextNode('​'))
   })
   headingNumbersFor(root).forEach((label, heading) => {
@@ -175,6 +175,11 @@ const BODY_CSS = `
   .doc [data-page-break-before] { page-break-before: always; break-before: page; }
   .doc table[data-legal-borderless] th, .doc table[data-legal-borderless] td, .doc th[data-legal-borderless], .doc td[data-legal-borderless] { border-color: transparent; }
   .doc img { max-width: 100%; height: auto; margin: 8px 0; }
+  .doc figure[data-vector-illustration] { margin: 8px 0; break-inside: avoid; }
+  .doc figure[data-vector-illustration][data-wrap='left'] { float: left; margin: 4px 16px 8px 0; }
+  .doc figure[data-vector-illustration][data-wrap='right'] { float: right; margin: 4px 0 8px 16px; }
+  .doc::after { content: ''; display: block; clear: both; }
+  .doc figure[data-vector-illustration] svg { display: block; max-width: 100%; height: auto; }
   .doc a { color: #5856d6; text-decoration: underline; }
 `
 

@@ -115,6 +115,23 @@ that adding a dependency here cannot silently break the others — see the comme
 file for what goes wrong without it (a Rollup "failed to resolve import" at build time, or
 two copies of React/ProseMirror at dev time).
 
+## Vector illustrations
+
+The `VectorIllustration` block holds a real W3C `<svg>` and edits it with SVG-Edit's
+headless canvas (`@svgedit/svgcanvas`, a peer dependency, loaded only when an
+illustration is opened). The SVG is sanitised with `dompurify` (also a peer dependency)
+every time it enters the document — stored HTML, paste, the canvas's output, a `.docx`
+picture — so hosts and the backend can render the stored markup as it is.
+
+- Stored form: `<figure data-vector-illustration="1"><svg …></svg></figure>` — structural
+  SVG, rendered by every read-only view with no JavaScript.
+- `.docx`: exported as Word's native SVG picture (vector + PNG fallback, rasterised in the
+  browser at export time); imported back from Word's `asvg:svgBlip` extension.
+- PDF: the browser print export prints the inline SVG; the backend PDFKit renderer draws
+  it as vector through `svg-to-pdfkit` (see that repo).
+- One workspace per editor at a time: the engine has no dispose and looks a few elements up
+  by id, so the workspace creates the canvas when it opens and tears it down when it closes.
+
 ## Types
 
 The implementation is untyped JS/JSX. Hand-written `.d.ts` files next to each entry point

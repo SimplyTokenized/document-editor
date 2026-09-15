@@ -37,6 +37,16 @@ export interface ContractEditorProps {
   onRequestComment?: (range: { from: number; to: number }) => void
   /** Override the image toolbar button so the host can open its own media picker. */
   onImageRequest?: (editor: unknown) => void
+  /**
+   * Where a picture's bytes go. Called for the toolbar's file picker, paste and drop, with
+   * the picture already downscaled (max 1600 px, JPEG/PNG); return the stable URL the
+   * document should store (the host's S3 file via its presigned-upload API). Without it,
+   * or if it throws, the picture is embedded inline as a data URI.
+   */
+  uploadImage?: (
+    blob: Blob,
+    meta: { width: number | null; height: number | null; name: string; type: string },
+  ) => Promise<{ url: string; width?: number; height?: number }>
   /** When provided, shows a "Change with AI" toolbar button that calls this. */
   onChangeWithAI?: () => void
   /** Review "comment only" stage: hide formatting tools, keep only commenting. */
@@ -210,6 +220,33 @@ export const PageView: unknown
  * stored as the CSS it renders to: attributes `marginTop`, `marginBottom`, `lineHeight`.
  */
 export const ParagraphSpacing: unknown
+/**
+ * A vector illustration: a block holding real W3C SVG, edited in an SVG-Edit workspace
+ * (`@svgedit/svgcanvas`, loaded on first edit). Stored as
+ * `<figure data-vector-illustration="1"><svg …></svg></figure>`, so every read-only view
+ * renders it with no JavaScript. The SVG is sanitised (DOMPurify) on every entry.
+ *
+ * Commands: `insertVectorIllustration({ svg?, width?, height? })`,
+ * `updateVectorIllustration(pos, attrs)`, `openVectorWorkspace(pos)`, `closeVectorWorkspace()`.
+ * Options: `labels` (see the workspace's DEFAULT_LABELS).
+ *
+ * Placement (also on the image node): `align` left/center/right for a block of its own,
+ * `wrap` 'none' | 'left' | 'right' — the latter two float the picture and let the text
+ * flow beside it (`data-wrap` + an inline float in the stored HTML; Word's square wrap in
+ * the .docx). Moving it up or down the page is drag and drop of the block.
+ *
+ * Track changes: an edit to an existing illustration is recorded as the block being
+ * inserted by the author (the previous drawing is not retained); a deleted illustration
+ * is marked `data-block-deleted`.
+ */
+export const VectorIllustration: unknown
+export const VECTOR_ILLUSTRATION_NAME: 'vectorIllustration'
+/** The attribute that marks an illustration's wrapper in stored HTML. */
+export const VECTOR_ATTR: 'data-vector-illustration'
+/** Sanitise + normalise SVG source; null when nothing usable survives. */
+export function sanitizeSvg(source: string | Element): { svg: string; width: number; height: number } | null
+/** Rasterise (sanitised) SVG to PNG bytes — the fallback Word needs beside an SVG picture. */
+export function rasterizeSvg(source: string, options?: { scale?: number }): Promise<Uint8Array>
 /** Each heading's label ("1.", "2.1"), or null when unnumbered — the editor's own scheme. */
 export function computeHeadingNumbers(
   headings: { level: number; numbered?: boolean | null }[],

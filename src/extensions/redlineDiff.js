@@ -79,9 +79,22 @@ const similarity = (a, b) => {
   return shared / Math.max(wa.size, wb.size)
 }
 
+/**
+ * A vector illustration (`<figure data-vector-illustration>`) is opaque to the diff: it has
+ * no words, so it either matches its counterpart exactly (same drawing) or it is a
+ * different block. It is never redlined inside — an <ins>/<del> in the SVG namespace is
+ * malformed — but marked whole with the block-level attributes the track-changes
+ * engine already renders for inserted/deleted blocks.
+ */
+const isVectorFigure = (node) => node.tagName === 'FIGURE' && node.hasAttribute('data-vector-illustration')
+const vectorIdentity = (node) => (node.querySelector('svg')?.outerHTML || '').replace(/\s+/g, ' ').trim()
+
 /** Do two nodes represent the same slot? Containers match by tag; leaves by text similarity. */
 const nodesMatch = (a, b) => {
   if (a.tagName !== b.tagName) return false
+  if (isVectorFigure(a) || isVectorFigure(b)) {
+    return isVectorFigure(a) && isVectorFigure(b) && vectorIdentity(a) === vectorIdentity(b)
+  }
   if (isContainer(a) && isContainer(b)) return true
   return similarity(a, b) >= 0.5
 }
@@ -130,6 +143,11 @@ const alignChildren = (base, cur) => {
 
 /** Wrap every leaf block inside `node` as fully inserted / deleted, keeping structure. */
 const markWhole = (node, kind, author) => {
+  if (isVectorFigure(node)) {
+    const marked = node.cloneNode(true)
+    marked.setAttribute(kind === 'ins' ? 'data-block-inserted' : 'data-block-deleted', author)
+    return marked.outerHTML
+  }
   if (isContainer(node)) {
     const inner = elementChildren(node)
       .map((c) => markWhole(c, kind, author))
@@ -228,6 +246,9 @@ export const acceptedHtml = (html) =>
   String(html || '')
     .replace(/<del\b[^>]*>[\s\S]*?<\/del>/gi, '')
     .replace(/<ins\b[^>]*>([\s\S]*?)<\/ins>/gi, '$1')
+    // A deleted illustration goes as a whole; an inserted one just loses its marker.
+    .replace(/<figure\b[^>]*data-vector-illustration[^>]*data-block-deleted=[^>]*>[\s\S]*?<\/figure>/gi, '')
+    .replace(/(<figure\b[^>]*data-vector-illustration[^>]*?)\s+data-block-inserted="[^"]*"/gi, '$1')
 
 /**
  * @param {string} baseHtml - the current document (its accepted text is used as the base)

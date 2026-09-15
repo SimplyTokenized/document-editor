@@ -3,7 +3,9 @@ import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Mapping, ReplaceStep } from '@tiptap/pm/transform'
 import { getAuthorColorIndex } from './authorColors.js'
 
-const TRACKED_BLOCK_TYPES = new Set(['paragraph', 'heading', 'listItem', 'blockquote'])
+// The vector illustration is an atom: it carries the block-level marker (inserted /
+// deleted as a whole) because inline insertion/deletion marks cannot apply to it.
+const TRACKED_BLOCK_TYPES = new Set(['paragraph', 'heading', 'listItem', 'blockquote', 'vectorIllustration'])
 
 export const TrackChangesExtension = Extension.create({
   name: 'trackChanges',
@@ -19,7 +21,7 @@ export const TrackChangesExtension = Extension.create({
   addGlobalAttributes() {
     return [
       {
-        types: ['paragraph', 'heading', 'listItem', 'blockquote'],
+        types: [...TRACKED_BLOCK_TYPES],
         attributes: {
           blockChange: {
             default: null,
