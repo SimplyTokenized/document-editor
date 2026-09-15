@@ -117,8 +117,14 @@ export const TokenHighlight = Extension.create({
        */
       setKnownTokens:
         (tokens) =>
-        ({ view }) => {
-          view.dispatch(view.state.tr.setMeta(tokenHighlightKey, { knownTokens: tokens }))
+        ({ tr }) => {
+          // Mutate the command's own `tr` rather than dispatching a fresh one:
+          // TipTap's CommandManager dispatches `tr` itself right after this
+          // returns. Dispatching a second transaction here meant that whenever a
+          // plugin appended a doc change to it (the trailing paragraph added to
+          // a document that ends with a table, for one), the manager's `tr` was
+          // already stale — "Applying a mismatched transaction", blank editor.
+          tr.setMeta(tokenHighlightKey, { knownTokens: tokens })
           return true
         },
     }

@@ -173,6 +173,14 @@
       margin-bottom: 0;
     }
 
+    // A page break is invisible on an unpaginated screen, so mark it: a dashed rule above the
+    // block that starts the new page (paragraph or heading carrying the PageBreak attribute).
+    [data-page-break-before] {
+      border-top: 1px dashed var(--doc-editor-border-subtle);
+      padding-top: 0.5rem;
+      margin-top: 1.25rem;
+    }
+
     h1 {
       font-size: 1.65rem;
       font-weight: 600;
@@ -649,6 +657,16 @@
       background: var(--doc-editor-bg-muted);
       font-weight: 600;
       text-align: left;
+    }
+
+    // Borderless: the table's own flag covers every cell, a cell's flag covers itself. The
+    // color goes transparent rather than the border going away so the grid keeps its exact
+    // geometry — nothing shifts when the lines are switched off.
+    &[data-legal-borderless] th,
+    &[data-legal-borderless] td,
+    th[data-legal-borderless],
+    td[data-legal-borderless] {
+      border-color: transparent;
     }
 
     p {
