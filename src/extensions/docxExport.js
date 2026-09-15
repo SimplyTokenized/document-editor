@@ -8,10 +8,10 @@
  *
  * Numbering: ordered lists use Word's own native multi-level "legal" numbering
  * (isLegalNumberingStyle), so Word itself renders and maintains "1.", "1.1.", "1.1.1."
- * as the user keeps editing in Word. Heading numbers (H2/H3), which the editor computes
- * live via CSS counters, don't have a simple native-Word equivalent, so they're
- * materialized here as literal leading text using the SAME counting scheme — the
- * exported numbers always match exactly what was shown in the editor.
+ * as the user keeps editing in Word. Heading numbers (H1–H3), which the editor draws live
+ * from each heading's numbering choice, don't have a simple native-Word equivalent, so
+ * they're materialized here as literal leading text computed by the SAME function
+ * (headingNumbers.js) — the exported numbers always match what was shown in the editor.
  */
 import {
   AlignmentType,
@@ -27,6 +27,7 @@ import {
   ImageRun,
   InsertedTextRun,
   LevelFormat,
+  LineRuleType,
   Packer,
   Paragraph,
   Table,
@@ -37,6 +38,7 @@ import {
   WidthType,
 } from 'docx'
 import { parseCommentPayload } from './changeCommentPayload.js'
+import { commonHeadingTextStyle, headingNumbersFor } from './headingNumbers.js'
 
 /**
  * Per-export tracked-changes state (module-level, mirroring currentPage/cellMargins). When
@@ -96,20 +98,14 @@ const buildLegalNumberingLevels = () =>
     isLegalNumberingStyle: true,
   }))
 
-const makeCounters = () => ({ h2: 0, h3: 0 })
+// Heading element → its number label ("1.", "2.1"), computed once per export over the whole
+// document with the editor's own scheme — set in exportHtmlToDocx.
+let headingNumbers = new Map()
 
-/** @returns {string} literal number prefix for H2/H3, mirroring the editor's CSS counters */
-const bumpHeadingCounter = (counters, tag) => {
-  if (tag === 'H2') {
-    counters.h2 += 1
-    counters.h3 = 0
-    return `${counters.h2}. `
-  }
-  if (tag === 'H3') {
-    counters.h3 += 1
-    return `${counters.h2}.${counters.h3} `
-  }
-  return ''
+const HEADING_LEVELS = {
+  H1: HeadingLevel.HEADING_1,
+  H2: HeadingLevel.HEADING_2,
+  H3: HeadingLevel.HEADING_3,
 }
 
 const NAMED_HIGHLIGHTS = new Set(Object.values(HighlightColor))
@@ -484,7 +480,7 @@ const buildTable = (tableEl) => {
           .slice(colIndex, colIndex + colSpan)
           .reduce((sum, w) => sum + w, 0)
         colIndex += colSpan
-        const blocks = walkBlocks(cellEl, makeCounters())
+        const blocks = walkBlocks(cellEl)
         const children = blocks.length
           ? blocks
           : [new Paragraph({ children: buildInlineChildren(cellEl) })]
@@ -528,7 +524,7 @@ const buildBlockquote = (el) => {
         }),
       )
     } else {
-      paragraphs.push(...walkBlockElement(child, makeCounters()))
+      paragraphs.push(...walkBlockElement(child))
     }
   })
   return paragraphs
@@ -547,26 +543,54 @@ const breaksPageBefore = (el) =>
   el.hasAttribute?.('data-page-break-before') ||
   /always/i.test(el.style?.pageBreakBefore || el.style?.breakBefore || '')
 
-function walkBlockElement(el, counters) {
+const pointsOf = (value) => {
+  const match = /^(-?\d*\.?\d+)(pt|px)$/.exec((value || '').trim())
+  if (!match) return null
+  return match[2] === 'px' ? parseFloat(match[1]) * 0.75 : parseFloat(match[1])
+}
+
+// Word's line-spacing multiple is relative to the font's own line height, CSS's to the
+// font size — see WORD_LINE_HEIGHT_FACTOR in paragraphSpacing.js; the import applied it.
+const WORD_LINE_HEIGHT_FACTOR = 1.17
+
+/** The paragraph's spacing (ParagraphSpacing attributes) as Word's `w:spacing`, in twips. */
+const spacingOf = (el) => {
+  const style = el.style
+  if (!style) return undefined
+  const spacing = {}
+  const before = pointsOf(style.marginTop)
+  const after = pointsOf(style.marginBottom)
+  if (before != null) spacing.before = Math.round(before * 20)
+  if (after != null) spacing.after = Math.round(after * 20)
+  const lineHeight = (style.lineHeight || '').trim()
+  if (/^\d*\.?\d+$/.test(lineHeight)) {
+    spacing.line = Math.round((parseFloat(lineHeight) / WORD_LINE_HEIGHT_FACTOR) * 240)
+    spacing.lineRule = LineRuleType.AUTO
+  } else {
+    const exact = pointsOf(lineHeight)
+    if (exact != null) {
+      spacing.line = Math.round(exact * 20)
+      spacing.lineRule = LineRuleType.EXACT
+    }
+  }
+  return Object.keys(spacing).length ? spacing : undefined
+}
+
+function walkBlockElement(el) {
   const tag = el.tagName
 
-  if (tag === 'H1') {
-    return [
-      new Paragraph({
-        heading: HeadingLevel.HEADING_1,
-        alignment: alignmentOf(el),
-        children: buildInlineChildren(el),
-      }),
-    ]
-  }
-  if (tag === 'H2' || tag === 'H3') {
-    const prefix = bumpHeadingCounter(counters, tag)
+  if (HEADING_LEVELS[tag]) {
+    const label = headingNumbers.get(el)
     const runs = buildInlineChildren(el)
-    const withPrefix = prefix ? [new TextRun({ text: prefix, bold: true }), ...runs] : runs
+    // The number wears the line's font/size/colour when the whole line shares one, as in Word.
+    const numberMarks = marksFromStyle({ style: commonHeadingTextStyle(el) }, { bold: true })
+    const withPrefix = label ? [makeTextRun(`${label} `, numberMarks), ...runs] : runs
     return [
       new Paragraph({
-        heading: tag === 'H2' ? HeadingLevel.HEADING_2 : HeadingLevel.HEADING_3,
+        heading: HEADING_LEVELS[tag],
         alignment: alignmentOf(el),
+        spacing: spacingOf(el),
+        pageBreakBefore: breaksPageBefore(el) || undefined,
         children: withPrefix.length ? withPrefix : [new TextRun('')],
       }),
     ]
@@ -576,6 +600,7 @@ function walkBlockElement(el, counters) {
     return [
       new Paragraph({
         alignment: alignmentOf(el),
+        spacing: spacingOf(el),
         pageBreakBefore: breaksPageBefore(el) || undefined,
         children: runs.length ? runs : [new TextRun('')],
       }),
@@ -610,11 +635,11 @@ function walkBlockElement(el, counters) {
     return [new Paragraph({ alignment: ALIGN_MAP[align] || undefined, children: [run] })]
   }
   // Unrecognized wrapper (e.g. a stray <div>) — recurse into its children.
-  return walkBlocks(el, counters)
+  return walkBlocks(el)
 }
 
-function walkBlocks(containerEl, counters) {
-  return Array.from(containerEl.children).flatMap((el) => walkBlockElement(el, counters))
+function walkBlocks(containerEl) {
+  return Array.from(containerEl.children).flatMap((el) => walkBlockElement(el))
 }
 
 const downloadBlob = (blob, fileName) => {
@@ -671,7 +696,8 @@ export async function exportHtmlToDocx(
   )
 
   const parsedDoc = new DOMParser().parseFromString(html || '<p></p>', 'text/html')
-  const children = walkBlocks(parsedDoc.body, makeCounters())
+  headingNumbers = headingNumbersFor(parsedDoc.body)
+  const children = walkBlocks(parsedDoc.body)
 
   // Comments are collected while walking the body above, so build them after walkBlocks ran.
   const commentDefinitions = trackedCtx.enabled ? buildCommentDefinitions() : []

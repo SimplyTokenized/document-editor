@@ -58,6 +58,59 @@
     --doc-editor-page-guide: #ebedef;
   }
 }
+// Fonts Office ships but keeps to itself: on a Mac, Aptos, Calibri and Cambria live inside
+// Word.app's private font collection, so a browser asked for `font-family: Aptos` finds
+// nothing and falls back to its default serif — and an imported Aptos document reads as
+// Times. These aliases use the real face where it IS visible to the browser (Windows, or a
+// user-installed copy) and the closest widely available face otherwise. The stored HTML
+// keeps the real family name, so the .docx export round-trips it. The print stylesheet
+// (pdfExport.js, PRINT_FONT_ALIASES) carries the same list.
+@font-face {
+  font-family: 'Aptos';
+  src: local('Aptos'), local('Helvetica Neue'), local('Arial');
+}
+@font-face {
+  font-family: 'Aptos';
+  font-weight: bold;
+  src: local('Aptos Bold'), local('Helvetica Neue Bold'), local('Arial Bold');
+}
+@font-face {
+  font-family: 'Aptos Display';
+  src: local('Aptos Display'), local('Aptos'), local('Helvetica Neue'), local('Arial');
+}
+@font-face {
+  font-family: 'Aptos Display';
+  font-weight: bold;
+  src: local('Aptos Display Bold'), local('Aptos Bold'), local('Helvetica Neue Bold'), local('Arial Bold');
+}
+@font-face {
+  font-family: 'Calibri';
+  src: local('Calibri'), local('Carlito'), local('Helvetica Neue'), local('Arial');
+}
+@font-face {
+  font-family: 'Calibri';
+  font-weight: bold;
+  src: local('Calibri Bold'), local('Carlito Bold'), local('Helvetica Neue Bold'), local('Arial Bold');
+}
+@font-face {
+  font-family: 'Cambria';
+  src: local('Cambria'), local('Caladea'), local('Georgia'), local('Times New Roman');
+}
+@font-face {
+  font-family: 'Cambria';
+  font-weight: bold;
+  src: local('Cambria Bold'), local('Caladea Bold'), local('Georgia Bold'), local('Times New Roman Bold');
+}
+@font-face {
+  font-family: 'Segoe UI';
+  src: local('Segoe UI'), local('Helvetica Neue'), local('Arial');
+}
+@font-face {
+  font-family: 'Segoe UI';
+  font-weight: bold;
+  src: local('Segoe UI Bold'), local('Helvetica Neue Bold'), local('Arial Bold');
+}
+
 // ---------------------------------------------------------------------------
 // Rich text editor (TipTap) — legal templates, compliance contracts, etc.
 // ---------------------------------------------------------------------------
@@ -154,6 +207,188 @@
     }
   }
 
+  // Font and size pickers — native selects, sized to sit in a toolbar group like the buttons.
+  &__toolbar-select {
+    min-height: 2rem;
+    padding: 0.25rem 0.5rem;
+    margin: 0;
+    border: 0;
+    border-right: 1px solid var(--doc-editor-border);
+    border-radius: 0;
+    background: var(--doc-editor-bg);
+    color: var(--doc-editor-fg);
+    font: inherit;
+    font-size: 0.8125rem;
+    cursor: pointer;
+
+    &:last-child {
+      border-right: 0;
+    }
+
+    &:hover:not(:disabled) {
+      background: var(--doc-editor-bg-muted);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--doc-editor-primary);
+      outline-offset: -2px;
+    }
+
+    &--font {
+      width: 9.5rem;
+    }
+
+    &--size {
+      width: 5rem;
+    }
+  }
+
+  // Text-colour popover. Not a toolbar-group: a group clips its content (overflow: hidden),
+  // and this one anchors a panel below its trigger.
+  &__color {
+    position: relative;
+    display: inline-flex;
+    border: 1px solid var(--doc-editor-border);
+    border-radius: var(--doc-editor-radius);
+
+    > .rich-text-editor__toolbar-btn {
+      gap: 0.3rem;
+      border-right: 0;
+      border-radius: inherit;
+    }
+  }
+
+  &__color-glyph {
+    font-weight: 700;
+    line-height: 1;
+    padding-bottom: 1px;
+    border-bottom: 3px solid currentColor;
+  }
+
+  // Portalled to <body> and placed by JS (see ColorControl) — the toolbar and editor clip.
+  &__color-panel {
+    position: fixed;
+    z-index: 1000;
+    width: 14rem;
+    color: var(--doc-editor-fg);
+    font-size: 0.8125rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.5rem;
+    border: 1px solid var(--doc-editor-border);
+    border-radius: var(--doc-editor-radius);
+    background: var(--doc-editor-bg);
+    box-shadow: var(--doc-editor-shadow);
+  }
+
+  &__color-heading {
+    padding: 0.25rem 0.25rem 0;
+    color: var(--doc-editor-fg-muted);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  &__color-list {
+    display: flex;
+    flex-direction: column;
+    max-height: 12rem;
+    overflow-y: auto;
+  }
+
+  &__color-option {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.3rem 0.4rem;
+    border: 0;
+    border-radius: calc(var(--doc-editor-radius) - 1px);
+    background: transparent;
+    color: var(--doc-editor-fg);
+    font: inherit;
+    font-size: 0.8125rem;
+    text-align: left;
+    cursor: pointer;
+
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.75rem;
+    }
+
+    &:hover,
+    &--active {
+      background: var(--doc-editor-bg-muted);
+    }
+
+    &--active {
+      font-weight: 600;
+    }
+  }
+
+  &__color-swatch {
+    flex: none;
+    width: 1rem;
+    height: 1rem;
+    border: 1px solid var(--doc-editor-border-subtle);
+    border-radius: 0.2rem;
+  }
+
+  &__color-empty {
+    padding: 0.25rem 0.4rem;
+    color: var(--doc-editor-fg-muted);
+    font-size: 0.8125rem;
+  }
+
+  &__color-custom {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0 0.25rem 0.25rem;
+
+    input[type='color'] {
+      flex: none;
+      width: 2rem;
+      height: 1.75rem;
+      padding: 0;
+      border: 1px solid var(--doc-editor-border);
+      border-radius: 0.25rem;
+      background: none;
+      cursor: pointer;
+    }
+
+    input[type='text'] {
+      flex: 1;
+      min-width: 0;
+      height: 1.75rem;
+      padding: 0 0.4rem;
+      border: 1px solid var(--doc-editor-border);
+      border-radius: 0.25rem;
+      background: var(--doc-editor-bg);
+      color: var(--doc-editor-fg);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.75rem;
+    }
+  }
+
+  &__color-apply {
+    height: 1.75rem;
+    padding: 0 0.5rem;
+    border: 0;
+    border-radius: 0.25rem;
+    background: var(--doc-editor-primary);
+    color: var(--doc-editor-on-primary);
+    font: inherit;
+    font-size: 0.75rem;
+    cursor: pointer;
+
+    &:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+  }
+
   .tiptap,
   .ProseMirror {
     min-height: 180px;
@@ -165,8 +400,11 @@
       outline: 0;
     }
 
+    // Both margins stated, not just the bottom: without a host reset the browser's own
+    // `1em` top margin would apply, and the print stylesheet (which states both) would
+    // paginate differently from the paper.
     p {
-      margin-bottom: 0.5rem;
+      margin: 0 0 0.5rem;
     }
 
     p:last-child {
@@ -175,10 +413,16 @@
 
     // A page break is invisible on an unpaginated screen, so mark it: a dashed rule above the
     // block that starts the new page (paragraph or heading carrying the PageBreak attribute).
+    // Drawn as a background, not a border, so it takes no space: in the page view the
+    // block sits at the top of its page, and the print stylesheet has no such line, so
+    // even one pixel would put the two out of step.
     [data-page-break-before] {
-      border-top: 1px dashed var(--doc-editor-border-subtle);
-      padding-top: 0.5rem;
-      margin-top: 1.25rem;
+      background: repeating-linear-gradient(
+          90deg,
+          var(--doc-editor-border-subtle) 0 4px,
+          transparent 4px 8px
+        )
+        top / 100% 1px no-repeat;
     }
 
     h1 {
@@ -271,6 +515,7 @@
   &__icon-link,
   &__icon-comment,
   &__icon-highlight,
+  &__icon-page-break,
   &__icon-align-left,
   &__icon-align-center,
   &__icon-align-right,
@@ -345,6 +590,19 @@
     content: '💬';
     font-size: 0.85rem;
     line-height: 1.2;
+  }
+
+  // A sheet with a dashed line across it — the break.
+  &__icon-page-break::before {
+    content: '';
+    display: block;
+    width: 0.7rem;
+    height: 0.9rem;
+    margin: 0.05rem auto 0;
+    border: 1.5px solid currentColor;
+    border-radius: 1px;
+    background: repeating-linear-gradient(90deg, currentColor 0 2px, transparent 2px 4px) center /
+      100% 1.5px no-repeat;
   }
 
   &__icon-highlight::before {
@@ -516,6 +774,11 @@
   // layout tool (via CSS vars set on the editor root) so the on-screen paper reflects the
   // real page size and margins ("distance") the author picks.
   max-width: var(--legal-page-width, 820px);
+  // The page width includes the margins, as on paper; the host apps' global resets already
+  // say so, stated here so the page view's min-height (padding included) means the same
+  // everywhere. Relative so the page-gap separators can reach out over the padding.
+  box-sizing: border-box;
+  position: relative;
   margin: 0 auto;
   // Zoom control scales the paper only (toolbar/comment margin stay put). `zoom` (not
   // `transform: scale`) so it's a real layout change — the scroll container's scrollable
@@ -552,28 +815,21 @@
     padding: 1.5rem 1.25rem;
   }
 
-  // Automatic numbering, computed at render time from heading level and list
-  // nesting depth — always correct, never needs manual renumbering as sections
-  // are added, removed, or reordered. H1 is treated as the (single) document
-  // title and is intentionally left unnumbered; H2 are top-level sections
-  // ("1.", "2." …) and H3 are sub-sections ("1.1.", "1.2." …). Ordered lists
-  // nest the same way ("1.", "1.1.", "1.1.1." …) as clauses are indented.
-  counter-reset: legal-h2;
-
-  h2 {
-    counter-reset: legal-h3;
-    counter-increment: legal-h2;
-
-    &::before {
-      content: counter(legal-h2) '. ';
-    }
-  }
-
+  // Automatic numbering — never needs manual renumbering as sections are added,
+  // removed, or reordered. Heading numbers ("1.", "1.1", "1.1.1") are computed by
+  // the HeadingNumbering extension from each heading's on/off choice and drawn
+  // from the attribute it decorates the heading with (scheme: headingNumbers.js).
+  // Ordered lists nest the same way ("1.", "1.1.", "1.1.1." …) as clauses are
+  // indented.
+  h1,
+  h2,
   h3 {
-    counter-increment: legal-h3;
-
-    &::before {
-      content: counter(legal-h2) '.' counter(legal-h3) ' ';
+    &[data-heading-number]::before {
+      content: attr(data-heading-number) ' ';
+      // Set by the decoration when the whole line shares one font/size/colour.
+      font-family: var(--heading-number-font-family, inherit);
+      font-size: var(--heading-number-font-size, inherit);
+      color: var(--heading-number-color, inherit);
     }
   }
 
@@ -1133,24 +1389,43 @@
   }
 }
 
-// Page-break guides that read like Word's page view: at each printable-page interval the
-// paper shows a shaded "gutter" band (the space between two sheets) with a soft shadow at
-// the top of the next page. `--legal-page-height` is computed from the document's real page
-// size/margins in JS. NOTE: TipTap does not paginate, so these are visual guides — the REAL
-// page breaks are produced by Word / the PDF engine on export, which paginate for real.
-.legal-template-editor--page-guides .tiptap,
-.legal-template-editor--page-guides .ProseMirror {
-  background-image: repeating-linear-gradient(
-    to bottom,
-    transparent 0,
-    transparent calc(var(--legal-page-height) - 14px),
-    rgba(0, 0, 0, 0.16) calc(var(--legal-page-height) - 14px),
-    var(--doc-editor-page-guide) calc(var(--legal-page-height) - 13px),
-    var(--doc-editor-page-guide) calc(var(--legal-page-height) - 1px),
-    rgba(0, 0, 0, 0.1) var(--legal-page-height),
-    transparent calc(var(--legal-page-height) + 2px)
-  );
-  background-attachment: local;
+// Page view. The PageView extension measures the blocks and inserts one of these gaps in
+// front of every block that would run past the bottom of its page: the rest of that page,
+// the bottom margin, the separator strip between the two sheets, and the next page's top
+// margin. The strip spans the full sheet width (out over the paper's padding) so the paper
+// reads as a stack of pages rather than one column with lines across it.
+.legal-page-gap {
+  position: relative;
+  margin: 0;
+  pointer-events: none; // a click in the gutter lands in the editor, which places the caret
+  user-select: none;
+
+  &__sep {
+    position: absolute;
+    top: var(--legal-gap-sep-top, 0);
+    left: calc(-1 * var(--legal-page-pad-left, 3rem));
+    right: calc(-1 * var(--legal-page-pad-right, 3rem));
+    height: 24px;
+    background: var(--doc-editor-page-guide);
+    // The bottom edge of the sheet above and the top edge of the sheet below.
+    box-shadow:
+      inset 0 2px 3px -1px rgba(0, 0, 0, 0.18),
+      inset 0 -1px 2px rgba(0, 0, 0, 0.1);
+
+    &::after {
+      content: 'Page ' attr(data-page);
+      position: absolute;
+      top: 50%;
+      right: 0.75rem;
+      transform: translateY(-50%);
+      color: var(--doc-editor-fg-muted);
+      font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+      font-size: 0.65rem;
+      font-weight: 600;
+      line-height: 1;
+      letter-spacing: 0.04em;
+    }
+  }
 }
 
 .legal-template-editor__wordcount {

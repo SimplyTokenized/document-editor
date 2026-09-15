@@ -6,6 +6,7 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import PropTypes from 'prop-types'
 import classNames from 'classnames'
 import { Extension } from '@tiptap/core'
@@ -37,6 +38,10 @@ import TablePropertiesPanel from './extensions/TablePropertiesPanel.jsx'
 import { parsePageSetupMarker, withPageSetupMarker } from './extensions/pageSetupMarker.js'
 import { TokenHighlight } from './extensions/tokenHighlight.js'
 import { PageBreak } from './extensions/pageBreak.js'
+import { HeadingNumbering } from './extensions/headingNumbering.js'
+import { PageView } from './extensions/pageView.js'
+import { ParagraphSpacing } from './extensions/paragraphSpacing.js'
+import { isHeadingNumbered } from './extensions/headingNumbers.js'
 import { ConditionalText } from './extensions/conditionalText.js'
 import { RepeatBlock } from './extensions/repeatBlock.js'
 import { PlaceholderSuggestion } from './extensions/placeholderSuggestion.js'
@@ -103,6 +108,19 @@ const DEFAULT_LABELS = {
   addComment: 'Add comment',
   addCommentNeedsSelection: 'Select the text you want to comment on first',
   changeWithAI: 'Change with AI',
+  fontFamily: 'Font',
+  defaultFont: 'Default font',
+  fontSize: 'Font size (pt)',
+  defaultFontSize: 'Default',
+  headingNumbering: 'Number this heading (1., 1.1, 1.1.1)',
+  pageBreak: 'Page break — start a new page here (Ctrl+Enter)',
+  removePageBreak: 'Remove the page break before this paragraph',
+  textColor: 'Text colour',
+  documentColors: 'Colours in this document',
+  noDocumentColors: 'No colours used yet',
+  customColor: 'Custom colour',
+  applyColor: 'Apply',
+  removeColor: 'Automatic (remove colour)',
   insertTable: 'Insert table',
   addColumnBefore: 'Add column before',
   addColumnAfter: 'Add column after',
@@ -129,7 +147,7 @@ const DEFAULT_LABELS = {
   zoomReset: 'Reset zoom to 100%',
   pageGuides: 'Page guides',
   pageGuidesHint:
-    'Show where each printed page ends. A document shorter than one page has no break to show.',
+    'Show the document as printed pages: a paragraph that does not fit is moved to the next page, as in Word.',
   layout: 'Page & layout',
   pageSize: 'Page size',
   preset: 'Format',
@@ -287,6 +305,12 @@ const EMPTY_TOOLBAR_STATE = {
   isHeading1: false,
   isHeading2: false,
   isHeading3: false,
+  isHeading: false,
+  isHeadingNumbered: false,
+  fontFamily: '',
+  fontSize: '',
+  color: '',
+  isPageBreak: false,
   isBulletList: false,
   isOrderedList: false,
   isBlockquote: false,
@@ -319,6 +343,12 @@ const selectToolbarState = (ctx) => {
     isHeading1: ctx.editor.isActive('heading', { level: 1 }),
     isHeading2: ctx.editor.isActive('heading', { level: 2 }),
     isHeading3: ctx.editor.isActive('heading', { level: 3 }),
+    isHeading: Boolean(heading),
+    isHeadingNumbered: heading ? isHeadingNumbered(heading.level, heading.numbered) : false,
+    fontFamily: textStyle.fontFamily || '',
+    fontSize: textStyle.fontSize || '',
+    color: textStyle.color || '',
+    isPageBreak: Boolean(ctx.editor.getAttributes(heading ? 'heading' : 'paragraph').pageBreakBefore),
     isBulletList: ctx.editor.isActive('bulletList'),
     isOrderedList: ctx.editor.isActive('orderedList'),
     isBlockquote: ctx.editor.isActive('blockquote'),
@@ -361,6 +391,17 @@ const useEditorCommands = () => {
   return { editor, setLink, addImage }
 }
 
+// What "Clear formatting" strips — Word's Ctrl+Space: font, size, colour and the character
+// styles. Links, comments and tracked insertions/deletions are content rather than
+// formatting, so they stay.
+const CLEARABLE_MARKS = ['textStyle', 'bold', 'italic', 'underline', 'strike', 'code', 'highlight']
+
+const clearFormatting = (editor) => {
+  const chain = editor.chain().focus()
+  CLEARABLE_MARKS.filter((name) => editor.schema.marks[name]).forEach((name) => chain.unsetMark(name))
+  chain.run()
+}
+
 const FormattingGroup = ({ state, editor }) => (
   <div className="rich-text-editor__toolbar-group">
     <ToolbarButton
@@ -398,12 +439,307 @@ const FormattingGroup = ({ state, editor }) => (
     >
       {'<>'}
     </ToolbarButton>
+    <ToolbarButton
+      title="Clear formatting (standard font and size)"
+      onClick={() => clearFormatting(editor)}
+    >
+      <span aria-hidden="true">
+        T<sub>x</sub>
+      </span>
+    </ToolbarButton>
   </div>
 )
 
 FormattingGroup.propTypes = {
   state: PropTypes.object.isRequired,
   editor: PropTypes.object.isRequired,
+}
+
+const FONT_FAMILIES = [
+  'Aptos',
+  'Arial',
+  'Calibri',
+  'Cambria',
+  'Courier New',
+  'Garamond',
+  'Georgia',
+  'Helvetica',
+  'Times New Roman',
+  'Verdana',
+]
+const FONT_SIZES_PT = [8, 9, 10, 10.5, 11, 12, 14, 16, 18, 20, 24, 28, 36]
+
+/** `'Times New Roman', serif` → `Times New Roman`: the first family, unquoted — the form the
+ *  options are written in and the .docx export reads back. */
+const primaryFontFamily = (value) => (value || '').split(',')[0].replace(/['"]/g, '').trim()
+
+/** Sizes are stored in points (`9.5pt`, as the .docx import writes them); a pasted `16px`
+ *  is shown in points too, so the picker reads in one unit, like Word's. */
+const fontSizeInPoints = (value) => {
+  const match = /^(\d*\.?\d+)(pt|px)?$/.exec((value || '').trim())
+  if (!match) return null
+  const size = parseFloat(match[1])
+  return match[2] === 'px' ? Math.round(size * 0.75 * 2) / 2 : size
+}
+
+const FontControls = ({ state, editor, labels }) => {
+  const family = primaryFontFamily(state.fontFamily)
+  const size = fontSizeInPoints(state.fontSize)
+  // A font or size the list does not offer — an imported document's own — still shows as
+  // the current value instead of the picker silently reading "Default".
+  const families = family && !FONT_FAMILIES.includes(family) ? [family, ...FONT_FAMILIES] : FONT_FAMILIES
+  const sizes =
+    size != null && !FONT_SIZES_PT.includes(size)
+      ? [...FONT_SIZES_PT, size].sort((a, b) => a - b)
+      : FONT_SIZES_PT
+
+  return (
+    <div className="rich-text-editor__toolbar-group">
+      <select
+        className="rich-text-editor__toolbar-select rich-text-editor__toolbar-select--font"
+        title={labels.fontFamily}
+        aria-label={labels.fontFamily}
+        value={family}
+        onChange={(event) => {
+          const chain = editor.chain().focus()
+          const next = event.target.value
+          ;(next ? chain.setFontFamily(next) : chain.unsetFontFamily()).run()
+        }}
+      >
+        <option value="">{labels.defaultFont}</option>
+        {families.map((name) => (
+          <option key={name} value={name} style={{ fontFamily: name }}>
+            {name}
+          </option>
+        ))}
+      </select>
+      <select
+        className="rich-text-editor__toolbar-select rich-text-editor__toolbar-select--size"
+        title={labels.fontSize}
+        aria-label={labels.fontSize}
+        value={size == null ? '' : String(size)}
+        onChange={(event) => {
+          const chain = editor.chain().focus()
+          const next = event.target.value
+          ;(next ? chain.setFontSize(`${next}pt`) : chain.unsetFontSize()).run()
+        }}
+      >
+        <option value="">{labels.defaultFontSize}</option>
+        {sizes.map((pt) => (
+          <option key={pt} value={String(pt)}>
+            {pt}
+          </option>
+        ))}
+      </select>
+    </div>
+  )
+}
+
+FontControls.propTypes = {
+  state: PropTypes.object.isRequired,
+  editor: PropTypes.object.isRequired,
+  labels: PropTypes.object.isRequired,
+}
+
+const HEX_COLOR = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i
+
+/** `#abc`, `#aabbcc` or `rgb(r, g, b)` → `#AABBCC`, the one form the picker shows and edits
+ *  (the browser hands colours back as rgb()); null for anything else. */
+const toHexColor = (value) => {
+  const text = String(value || '').trim()
+  const hex = HEX_COLOR.exec(text)
+  if (hex) {
+    const digits = hex[1].length === 3 ? hex[1].replace(/./g, (c) => c + c) : hex[1]
+    return `#${digits.toUpperCase()}`
+  }
+  const rgb = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i.exec(text)
+  if (!rgb) return null
+  return `#${rgb
+    .slice(1, 4)
+    .map((n) => Number(n).toString(16).padStart(2, '0'))
+    .join('')
+    .toUpperCase()}`
+}
+
+/** Text colours the document already uses, most-used (by characters) first — so the house
+ *  colours of an imported template are one click away instead of retyped from memory. */
+const documentColors = (editor) => {
+  const counts = new Map()
+  editor.state.doc.descendants((node) => {
+    if (!node.isText) return
+    const hex = toHexColor(node.marks.find((mark) => mark.type.name === 'textStyle')?.attrs.color)
+    if (hex) counts.set(hex, (counts.get(hex) || 0) + node.text.length)
+  })
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([hex]) => hex)
+}
+
+/**
+ * Text colour: the document's own colours with their hex, a full picker, an editable hex
+ * field, and "automatic". A popover rather than a ToolbarMenu because it holds inputs — a
+ * click inside must not close it. Closes on outside click and Escape, like the others.
+ */
+const ColorControl = ({ state, editor, labels }) => {
+  const [open, setOpen] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [position, setPosition] = useState(null)
+  const rootRef = useRef(null)
+  const panelRef = useRef(null)
+  const current = toHexColor(state.color)
+  const draftHex = toHexColor(draft)
+  const colors = open ? documentColors(editor) : []
+
+  useEffect(() => {
+    if (!open) return undefined
+    // Keep the portalled panel under its button while the page or a scroll container moves.
+    const place = () => {
+      const rect = rootRef.current?.getBoundingClientRect()
+      if (!rect) return
+      const panelWidth = panelRef.current?.offsetWidth || 224
+      setPosition({
+        top: rect.bottom + 4,
+        left: Math.max(8, Math.min(rect.left, window.innerWidth - panelWidth - 8)),
+      })
+    }
+    place()
+    window.addEventListener('resize', place)
+    window.addEventListener('scroll', place, true)
+    const onPointerDown = (event) => {
+      const inside =
+        rootRef.current?.contains(event.target) || panelRef.current?.contains(event.target)
+      if (!inside) setOpen(false)
+    }
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    window.document.addEventListener('mousedown', onPointerDown)
+    window.document.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('resize', place)
+      window.removeEventListener('scroll', place, true)
+      window.document.removeEventListener('mousedown', onPointerDown)
+      window.document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [open])
+
+  // The picker's live drag applies without refocusing the editor: focusing would pull focus
+  // out of the picker mid-drag. The selection lives in the editor state either way.
+  const apply = (hex, { refocus = true } = {}) =>
+    (refocus ? editor.chain().focus() : editor.chain()).setColor(hex).run()
+
+  return (
+    <div className="rich-text-editor__color" ref={rootRef}>
+      <button
+        type="button"
+        className={classNames('rich-text-editor__toolbar-btn', {
+          'rich-text-editor__toolbar-btn--active': open,
+        })}
+        title={labels.textColor}
+        aria-label={labels.textColor}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        onClick={() => {
+          if (!open) setDraft(current || '#000000')
+          setOpen((value) => !value)
+        }}
+      >
+        <span
+          className="rich-text-editor__color-glyph"
+          style={{ borderBottomColor: current || 'currentColor' }}
+          aria-hidden="true"
+        >
+          A
+        </span>
+        <span className="legal-template-editor__menu-caret" aria-hidden="true" />
+      </button>
+      {open && position ? createPortal(
+        // Portalled to <body>: the formatting toolbar scrolls sideways (overflow: auto) and the
+        // editor clips (overflow: hidden), so a panel anchored inside either was cut off and
+        // never showed. Fixed-positioned under the button instead.
+        <div
+          ref={panelRef}
+          className="rich-text-editor__color-panel"
+          role="dialog"
+          aria-label={labels.textColor}
+          style={{ top: position.top, left: position.left }}
+        >
+          <div className="rich-text-editor__color-heading">{labels.documentColors}</div>
+          {colors.length ? (
+            <div className="rich-text-editor__color-list">
+              {colors.map((hex) => (
+                <button
+                  key={hex}
+                  type="button"
+                  className={classNames('rich-text-editor__color-option', {
+                    'rich-text-editor__color-option--active': hex === current,
+                  })}
+                  onClick={() => {
+                    apply(hex)
+                    setOpen(false)
+                  }}
+                >
+                  <span className="rich-text-editor__color-swatch" style={{ background: hex }} />
+                  <code>{hex}</code>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="rich-text-editor__color-empty">{labels.noDocumentColors}</div>
+          )}
+
+          <div className="rich-text-editor__color-heading">{labels.customColor}</div>
+          <form
+            className="rich-text-editor__color-custom"
+            onSubmit={(event) => {
+              event.preventDefault()
+              if (!draftHex) return
+              apply(draftHex)
+              setOpen(false)
+            }}
+          >
+            <input
+              type="color"
+              aria-label={labels.customColor}
+              value={draftHex || '#000000'}
+              onChange={(event) => {
+                const hex = event.target.value.toUpperCase()
+                setDraft(hex)
+                apply(hex, { refocus: false })
+              }}
+            />
+            <input
+              type="text"
+              aria-label="Hex"
+              value={draft}
+              maxLength={7}
+              spellCheck={false}
+              onChange={(event) => setDraft(event.target.value)}
+            />
+            <button type="submit" className="rich-text-editor__color-apply" disabled={!draftHex}>
+              {labels.applyColor}
+            </button>
+          </form>
+
+          <button
+            type="button"
+            className="legal-template-editor__menu-item"
+            onClick={() => {
+              editor.chain().focus().unsetColor().run()
+              setOpen(false)
+            }}
+          >
+            {labels.removeColor}
+          </button>
+        </div>,
+        window.document.body,
+      ) : null}
+    </div>
+  )
+}
+
+ColorControl.propTypes = {
+  state: PropTypes.object.isRequired,
+  editor: PropTypes.object.isRequired,
+  labels: PropTypes.object.isRequired,
 }
 
 const TipTapMenuBar = ({
@@ -456,6 +792,8 @@ const TipTapMenuBar = ({
 
   return (
     <div className="rich-text-editor__toolbar" role="toolbar" aria-label="Text formatting">
+      <FontControls state={state} editor={editor} labels={labels} />
+      <ColorControl state={state} editor={editor} labels={labels} />
       <FormattingGroup state={state} editor={editor} />
 
       <div className="rich-text-editor__toolbar-group">
@@ -479,6 +817,14 @@ const TipTapMenuBar = ({
           onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
         >
           H3
+        </ToolbarButton>
+        <ToolbarButton
+          title={labels.headingNumbering}
+          active={state.isHeadingNumbered}
+          disabled={!state.isHeading}
+          onClick={() => editor.chain().focus().toggleHeadingNumbering().run()}
+        >
+          1.1
         </ToolbarButton>
       </div>
 
@@ -526,6 +872,17 @@ const TipTapMenuBar = ({
           onClick={() => editor.chain().focus().setHorizontalRule().run()}
         >
           &mdash;
+        </ToolbarButton>
+        <ToolbarButton
+          title={state.isPageBreak ? labels.removePageBreak : labels.pageBreak}
+          active={state.isPageBreak}
+          onClick={() =>
+            state.isPageBreak
+              ? editor.chain().focus().togglePageBreakBefore().run()
+              : editor.chain().focus().insertPageBreak().run()
+          }
+        >
+          <span className="rich-text-editor__icon-page-break" aria-hidden="true" />
         </ToolbarButton>
       </div>
 
@@ -788,6 +1145,9 @@ const buildExtensions = (placeholder, trackChanges, placeholderSuggestion, known
       alignments: ['left', 'center', 'right', 'justify'],
     }),
     PageBreak,
+    HeadingNumbering,
+    PageView,
+    ParagraphSpacing,
     Highlight.configure({
       multicolor: false,
     }),
@@ -1119,51 +1479,10 @@ const TipTapEditor = ({
   // Mirror for the useEditor onUpdate closure, which is created once and would otherwise
   // read a stale pageSetup forever.
   const pageSetupRef = useRef(pageSetup)
-  const [pageHeightPx, setPageHeightPx] = useState(null)
   const [counts, setCounts] = useState(() => {
     const text = getRichTextPlainText(parsePageSetupMarker(content).html)
     return { words: countWords(text), characters: text.length }
   })
-
-  // Compute the on-screen height of one printable page so the page-break guides land where
-  // Word would actually break. The paper's rendered content width maps to the source's
-  // printable width (twips); apply that same px-per-twip scale to the printable height.
-  useEffect(() => {
-    if (!pageGuides) return undefined
-    const A4 = { w: 11906, h: 16838, mL: 1134, mR: 1134, mT: 1134, mB: 1134 }
-    const pw = pageSetup?.size?.width || A4.w
-    const ph = pageSetup?.size?.height || A4.h
-    const mL = pageSetup?.margins?.left ?? A4.mL
-    const mR = pageSetup?.margins?.right ?? A4.mR
-    const mT = pageSetup?.margins?.top ?? A4.mT
-    const mB = pageSetup?.margins?.bottom ?? A4.mB
-    const printableWidthTwips = Math.max(1, pw - mL - mR)
-    const printableHeightTwips = Math.max(1, ph - mT - mB)
-
-    const measure = () => {
-      const proseEl = rootRef.current?.querySelector('.ProseMirror')
-      if (!proseEl) return
-      // Content-box width (excludes the paper's own padding) ≈ the printable width on paper.
-      const cs = window.getComputedStyle(proseEl)
-      // clientWidth is reported in the element's own LOCAL (nominal, pre-zoom) pixel space —
-      // CSS `zoom` scales how it's *rendered*, not what clientWidth/scrollWidth report — so
-      // this is already the right value for --legal-page-height, a NOMINAL size consumed by a
-      // calc() on that same zoomed element (which re-applies the zoom once, at render time).
-      const innerWidth =
-        proseEl.clientWidth - parseFloat(cs.paddingLeft || '0') - parseFloat(cs.paddingRight || '0')
-      if (innerWidth <= 0) return
-      const scale = innerWidth / printableWidthTwips
-      setPageHeightPx(Math.round(printableHeightTwips * scale))
-    }
-    // Defer once so the ProseMirror node is laid out before the first measure.
-    const raf = requestAnimationFrame(measure)
-    const ro = new ResizeObserver(measure)
-    if (rootRef.current) ro.observe(rootRef.current)
-    return () => {
-      cancelAnimationFrame(raf)
-      ro.disconnect()
-    }
-  }, [pageGuides, pageSetup])
 
   // Auto-fit the zoom so a freshly loaded/imported document never OPENS with a table already
   // bleeding into the review comment margin (a raw .docx import's column widths are captured
@@ -1180,8 +1499,7 @@ const TipTapEditor = ({
       if (!proseEl || !trackEl) return
       // clientWidth/scrollWidth are reported in the (zoomed) element's own LOCAL, pre-zoom
       // pixel space — NOT the real on-screen size — so these three are directly comparable
-      // without adjusting for the current zoom (see the pageHeightPx effect above for the
-      // same nuance).
+      // without adjusting for the current zoom.
       const pageWidth = proseEl.clientWidth // the paper's own max-width box, no overflow
       const contentWidth = proseEl.scrollWidth // paper's content extent, incl. table overflow
       const trackWidth = trackEl.clientWidth // doc column's real (unzoomed) box width
@@ -1227,6 +1545,13 @@ const TipTapEditor = ({
       setCounts({ words: countWords(text), characters: text.length })
     },
   })
+
+  // The page view paginates on screen from the same geometry the paper is drawn with, so a
+  // margin change in the layout tool moves the page breaks as well as the padding.
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return
+    editor.commands.setPageView({ enabled: pageGuides, pageSetup })
+  }, [editor, pageGuides, pageSetup])
 
   // Route ALL page-setup changes (layout tool, .docx import, reset) through here so the new
   // geometry is immediately re-embedded in the emitted content — otherwise changing margins
@@ -1352,12 +1677,11 @@ const TipTapEditor = ({
       ref={rootRef}
       className={classNames('rich-text-editor legal-template-editor', {
         'legal-template-editor--fullscreen': isFullscreen,
-        'legal-template-editor--page-guides': pageGuides && pageHeightPx > 0,
+        'legal-template-editor--page-guides': pageGuides,
         'legal-template-editor--has-comments': commentPanelActive && hasComments,
       })}
       style={{
         minHeight: minHeight || 200,
-        '--legal-page-height': `${pageHeightPx || 1160}px`,
         '--legal-zoom': zoom,
         ...buildLayoutVars(pageSetup),
       }}
