@@ -163,6 +163,11 @@
     overflow: hidden;
   }
 
+  // The toolbar while an illustration is open: the slot the workspace's tools render into.
+  &__toolbar--vector .legal-template-editor__vector-tools {
+    display: contents;
+  }
+
   &__toolbar-btn {
     display: inline-flex;
     align-items: center;
@@ -2047,29 +2052,27 @@
   clear: both;
 }
 
+// The workspace is the artboard itself, on the paper; its tools live in the editor's main
+// toolbar (portalled into `.legal-template-editor__vector-tools`) — nothing framed.
 .legal-vector-workspace {
   // The paper is scaled with CSS `zoom` (the zoom control / auto-fit). SVG-Edit maps the
   // pointer through the SVG's screen matrix, which CSS zoom does not report, so the grips
   // and rubber band drift from the shapes. Undo the paper's zoom here: the artboard is
   // always edited at 1:1.
   zoom: calc(1 / var(--legal-zoom, 1));
-  border: 1px solid var(--doc-editor-border);
-  border-radius: var(--doc-editor-radius);
-  background: var(--doc-editor-bg);
-  color: var(--doc-editor-fg);
   outline: 0;
+  color: var(--doc-editor-fg);
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
   font-size: 0.8125rem;
   line-height: 1.2;
 
-  &:focus-within {
-    border-color: var(--doc-editor-primary);
-  }
-
+  // The tool row: the same groups as the formatting toolbar, laid out like it.
   &__toolbar {
-    // The formatting toolbar's rules apply (shared class); only the frame changes here.
-    border-bottom: 1px solid var(--doc-editor-border);
-    border-radius: var(--doc-editor-radius) var(--doc-editor-radius) 0 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
   }
 
   &__props {
@@ -2137,23 +2140,24 @@
     }
   }
 
-  // The artboard sits on the workspace colour; a large artboard scrolls inside.
+  // The artboard sits straight on the paper; a large one scrolls inside its box.
   &__workarea {
     position: relative;
     overflow: auto;
-    max-height: 70vh;
-    background: var(--doc-editor-workspace);
-    border-radius: 0 0 var(--doc-editor-radius) var(--doc-editor-radius);
+    max-height: 80vh;
   }
 
   &__canvas {
     position: relative;
     min-height: 200px;
 
-    // svgcanvas' root: it sets x/y offsets and overflow=visible on it.
+    // svgcanvas' root: it sets x/y offsets and overflow=visible on it. The dashed line is
+    // the artboard's edge on the paper while it is being drawn on.
     #svgroot {
       display: block;
       overflow: hidden;
+      outline: 1px dashed var(--doc-editor-border-subtle);
+      outline-offset: -1px;
     }
   }
 

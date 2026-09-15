@@ -42,6 +42,7 @@ import { HeadingNumbering } from './extensions/headingNumbering.js'
 import { PageView } from './extensions/pageView.js'
 import { ParagraphSpacing } from './extensions/paragraphSpacing.js'
 import { VectorIllustration } from './extensions/vectorIllustration.js'
+import { getVectorWorkspacePos } from './extensions/vectorWorkspace/workspaceState.js'
 import { imageFilesOf, insertImageFiles, pickImageFiles } from './extensions/imageIntake.js'
 import { isHeadingNumbered } from './extensions/headingNumbers.js'
 import { ConditionalText } from './extensions/conditionalText.js'
@@ -104,6 +105,7 @@ const DEFAULT_LABELS = {
   pageBreak: 'Page break — start a new page here (Ctrl+Enter)',
   insertVector: 'Insert vector illustration',
   editVector: '✒️ Edit Vector',
+  vectorDone: '✓ Done',
   wrapNone: 'Text above and below (own line)',
   wrapLeft: 'Illustration left, text flows on the right',
   wrapRight: 'Illustration right, text flows on the left',
@@ -307,6 +309,7 @@ const EMPTY_TOOLBAR_STATE = {
   isVector: false,
   isImage: false,
   vectorWrap: 'none',
+  vectorEditing: false,
   isBulletList: false,
   isOrderedList: false,
   isBlockquote: false,
@@ -365,6 +368,8 @@ const selectToolbarState = (ctx) => {
     canRedo: ctx.editor.can().chain().focus().redo().run(),
     // Drives the "Add comment" button's enabled state — see canCommentOnSelection.
     canComment: canCommentOnSelection(ctx.editor),
+    // An illustration is open in its workspace: the toolbar shows the vector tools instead.
+    vectorEditing: getVectorWorkspacePos(ctx.editor.state) != null,
   }
 }
 
@@ -794,6 +799,14 @@ const TipTapMenuBar = ({
   }
 
   return (
+    // While an illustration is being drawn the toolbar IS the vector toolbar: the workspace
+    // (VectorWorkspace.jsx) renders its tools into this slot, so drawing happens on the
+    // paper with the tools where every other tool is — one integrated feature.
+    state.vectorEditing ? (
+      <div className="rich-text-editor__toolbar rich-text-editor__toolbar--vector" role="toolbar" aria-label="Vector tools">
+        <div className="legal-template-editor__vector-tools" />
+      </div>
+    ) : (
     <div className="rich-text-editor__toolbar" role="toolbar" aria-label="Text formatting">
       <FontControls state={state} editor={editor} labels={labels} />
       <ColorControl state={state} editor={editor} labels={labels} />
@@ -1064,6 +1077,7 @@ const TipTapMenuBar = ({
         </ToolbarButton>
       </div>
     </div>
+    )
   )
 }
 

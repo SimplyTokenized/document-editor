@@ -20,6 +20,7 @@
  * teardown.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import PropTypes from 'prop-types'
 import classNames from 'classnames'
 import { DEFAULT_ARTBOARD, cropSvgTo, drawnBox, sanitizeSvg, svgForCanvas, viewBoxOf } from '../vectorSvg.js'
@@ -41,8 +42,8 @@ const DEFAULT_LABELS = {
   vectorUndo: 'Undo',
   vectorRedo: 'Redo',
   vectorDelete: 'Delete selection',
-  vectorApply: 'Save / Apply changes',
-  vectorCancel: 'Cancel',
+  vectorDone: '✓ Done',
+  vectorCancel: 'Discard',
   vectorDiscard: 'Discard the changes to this illustration?',
   vectorLoadError: 'The vector editor could not be loaded.',
 }
@@ -117,8 +118,24 @@ const VectorWorkspace = ({ editor, node, pos, labels: labelOverrides }) => {
   const [strokeWidth, setStrokeWidth] = useState(2)
   const [fillNone, setFillNone] = useState(false)
   const [strokeNone, setStrokeNone] = useState(false)
+  // The slot in the editor's main toolbar the tools render into (ContractEditor swaps its
+  // formatting toolbar for this slot while an illustration is open). Found after mount —
+  // the toolbar re-renders on the same transaction that opened the workspace.
+  const [toolbarSlot, setToolbarSlot] = useState(null)
 
   const close = useCallback(() => editor.commands.closeVectorWorkspace(), [editor])
+
+  useEffect(() => {
+    const root = editor.view?.dom?.closest?.('.legal-template-editor, .rich-text-editor') || document
+    const find = () => root.querySelector('.legal-template-editor__vector-tools')
+    const found = find()
+    if (found) {
+      setToolbarSlot(found)
+      return undefined
+    }
+    const raf = requestAnimationFrame(() => setToolbarSlot(find()))
+    return () => cancelAnimationFrame(raf)
+  }, [editor])
 
   useEffect(() => {
     let cancelled = false
@@ -301,16 +318,8 @@ const VectorWorkspace = ({ editor, node, pos, labels: labelOverrides }) => {
 
   const hasSelection = selection.length > 0
 
-  return (
-    <div
-      ref={rootRef}
-      className={classNames('legal-vector-workspace', { 'legal-vector-workspace--ready': ready })}
-      tabIndex={-1}
-      onKeyDown={onKeyDown}
-      role="application"
-      aria-label="Vector editor"
-    >
-      <div className="rich-text-editor__toolbar legal-vector-workspace__toolbar" role="toolbar">
+  const toolbar = (
+    <div className="legal-vector-workspace__toolbar" onKeyDown={onKeyDown}>
         <div className="rich-text-editor__toolbar-group">
           <ToolButton title={labels.vectorSelect} active={tool === 'select'} onClick={() => chooseTool('select')}>
             <span className="legal-vector-icon legal-vector-icon--select" aria-hidden="true" />
@@ -414,13 +423,25 @@ const VectorWorkspace = ({ editor, node, pos, labels: labelOverrides }) => {
         </div>
         <div className="rich-text-editor__toolbar-group legal-vector-workspace__actions">
           <button type="button" className="legal-vector-workspace__apply" onClick={apply} disabled={!ready}>
-            {labels.vectorApply}
+            {labels.vectorDone}
           </button>
           <button type="button" className="legal-vector-workspace__cancel" onClick={cancel}>
             {labels.vectorCancel}
           </button>
         </div>
-      </div>
+    </div>
+  )
+
+  return (
+    <div
+      ref={rootRef}
+      className={classNames('legal-vector-workspace', { 'legal-vector-workspace--ready': ready })}
+      tabIndex={-1}
+      onKeyDown={onKeyDown}
+      role="application"
+      aria-label="Vector editor"
+    >
+      {toolbarSlot ? createPortal(toolbar, toolbarSlot) : toolbar}
 
       {error ? (
         <div className="legal-vector-workspace__error" role="alert">
