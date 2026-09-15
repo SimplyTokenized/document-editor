@@ -2267,3 +2267,30 @@
   outline: 2px dashed #b42318;
   outline-offset: 2px;
 }
+
+// Ribbon buttons with a caption under the icon (Insert tab): the icon on top, the name
+// beneath, as Word names its Insert buttons — a glyph alone did not say what it inserts.
+.rich-text-editor__toolbar-btn:has(> .rich-text-editor__btn-caption) {
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 3.25rem;
+  padding: 0.3rem 0.45rem 0.25rem;
+  line-height: 1;
+}
+
+.rich-text-editor__btn-caption {
+  font-size: 0.625rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  color: var(--doc-editor-fg-muted);
+
+  .rich-text-editor__toolbar-btn--active & {
+    color: inherit;
+  }
+}
+
+.rich-text-editor__svg-icon {
+  display: block;
+  flex: none;
+}

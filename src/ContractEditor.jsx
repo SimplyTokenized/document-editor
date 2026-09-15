@@ -44,6 +44,7 @@ import { ParagraphSpacing } from './extensions/paragraphSpacing.js'
 import { VectorIllustration } from './extensions/vectorIllustration.js'
 import { getVectorWorkspacePos } from './extensions/vectorWorkspace/workspaceState.js'
 import { imageFilesOf, insertImageFiles, pickImageFiles } from './extensions/imageIntake.js'
+import { Captioned } from './toolbarIcons.jsx'
 import { isHeadingNumbered } from './extensions/headingNumbers.js'
 import { ConditionalText } from './extensions/conditionalText.js'
 import { RepeatBlock } from './extensions/repeatBlock.js'
@@ -125,6 +126,24 @@ const DEFAULT_LABELS = {
   customColor: 'Custom colour',
   applyColor: 'Apply',
   removeColor: 'Automatic (remove colour)',
+  // Captions under the Insert tab's buttons (the titles above stay as the tooltips).
+  captionQuote: 'Quote',
+  captionRule: 'Rule',
+  captionPageBreak: 'Page break',
+  captionImage: 'Image',
+  captionVector: 'Drawing',
+  captionLink: 'Link',
+  captionTable: 'Table',
+  captionColBefore: 'Col. before',
+  captionColAfter: 'Col. after',
+  captionColDelete: 'Del. col.',
+  captionRowBefore: 'Row above',
+  captionRowAfter: 'Row below',
+  captionRowDelete: 'Del. row',
+  captionTableDelete: 'Del. table',
+  captionWrapNone: 'In line',
+  captionWrapLeft: 'Wrap left',
+  captionWrapRight: 'Wrap right',
   tabHome: 'Home',
   tabInsert: 'Insert',
   tabFields: 'Fields',
@@ -987,13 +1006,13 @@ const TipTapMenuBar = ({
               active={state.isBlockquote}
               onClick={() => editor.chain().focus().toggleBlockquote().run()}
             >
-              &ldquo;
+              <Captioned icon="quote" caption={labels.captionQuote} />
             </ToolbarButton>
             <ToolbarButton
               title="Horizontal rule"
               onClick={() => editor.chain().focus().setHorizontalRule().run()}
             >
-              &mdash;
+              <Captioned icon="rule" caption={labels.captionRule} />
             </ToolbarButton>
             <ToolbarButton
               title={state.isPageBreak ? labels.removePageBreak : labels.pageBreak}
@@ -1004,7 +1023,7 @@ const TipTapMenuBar = ({
                   : editor.chain().focus().insertPageBreak().run()
               }
             >
-              <span className="rich-text-editor__icon-page-break" aria-hidden="true" />
+              <Captioned icon="pageBreak" caption={labels.captionPageBreak} />
             </ToolbarButton>
           </div>
 
@@ -1013,14 +1032,14 @@ const TipTapMenuBar = ({
               title="Insert image"
               onClick={onImageRequest ? () => onImageRequest(editor) : addImage}
             >
-              <span className="rich-text-editor__icon-image" aria-hidden="true" />
+              <Captioned icon="image" caption={labels.captionImage} />
             </ToolbarButton>
             <ToolbarButton
               title={labels.insertVector}
               active={state.isVector}
               onClick={() => editor.chain().focus().insertVectorIllustration().run()}
             >
-              <span className="rich-text-editor__icon-vector" aria-hidden="true" />
+              <Captioned icon="pen" caption={labels.captionVector} />
             </ToolbarButton>
             {state.isVector || state.isImage
               ? // How the text treats the selected picture / illustration; its left/center/right
@@ -1034,12 +1053,12 @@ const TipTapMenuBar = ({
                       editor.chain().focus().updateAttributes(state.isImage ? 'image' : 'vectorIllustration', { wrap }).run()
                     }
                   >
-                    <span className={`rich-text-editor__icon-wrap-${wrap}`} aria-hidden="true" />
+                    <Captioned icon={`wrap${wrap[0].toUpperCase()}${wrap.slice(1)}`} caption={labels[`captionWrap${wrap[0].toUpperCase()}${wrap.slice(1)}`]} />
                   </ToolbarButton>
                 ))
               : null}
             <ToolbarButton title="Insert link" active={state.isLink} onClick={setLink}>
-              <span className="rich-text-editor__icon-link" aria-hidden="true" />
+              <Captioned icon="link" caption={labels.captionLink} />
             </ToolbarButton>
           </div>
 
@@ -1050,56 +1069,56 @@ const TipTapMenuBar = ({
                 editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
               }
             >
-              <span className="rich-text-editor__icon-table" aria-hidden="true" />
+              <Captioned icon="table" caption={labels.captionTable} />
             </ToolbarButton>
             <ToolbarButton
               title={labels.addColumnBefore}
               disabled={!state.isTable}
               onClick={() => editor.chain().focus().addColumnBefore().run()}
             >
-              <span className="rich-text-editor__icon-col-before" aria-hidden="true" />
+              <Captioned icon="colBefore" caption={labels.captionColBefore} />
             </ToolbarButton>
             <ToolbarButton
               title={labels.addColumnAfter}
               disabled={!state.isTable}
               onClick={() => editor.chain().focus().addColumnAfter().run()}
             >
-              <span className="rich-text-editor__icon-col-after" aria-hidden="true" />
+              <Captioned icon="colAfter" caption={labels.captionColAfter} />
             </ToolbarButton>
             <ToolbarButton
               title={labels.deleteColumn}
               disabled={!state.isTable}
               onClick={() => editor.chain().focus().deleteColumn().run()}
             >
-              <span className="rich-text-editor__icon-col-delete" aria-hidden="true" />
+              <Captioned icon="colDelete" caption={labels.captionColDelete} />
             </ToolbarButton>
             <ToolbarButton
               title={labels.addRowBefore}
               disabled={!state.isTable}
               onClick={() => editor.chain().focus().addRowBefore().run()}
             >
-              <span className="rich-text-editor__icon-row-before" aria-hidden="true" />
+              <Captioned icon="rowBefore" caption={labels.captionRowBefore} />
             </ToolbarButton>
             <ToolbarButton
               title={labels.addRowAfter}
               disabled={!state.isTable}
               onClick={() => editor.chain().focus().addRowAfter().run()}
             >
-              <span className="rich-text-editor__icon-row-after" aria-hidden="true" />
+              <Captioned icon="rowAfter" caption={labels.captionRowAfter} />
             </ToolbarButton>
             <ToolbarButton
               title={labels.deleteRow}
               disabled={!state.isTable}
               onClick={() => editor.chain().focus().deleteRow().run()}
             >
-              <span className="rich-text-editor__icon-row-delete" aria-hidden="true" />
+              <Captioned icon="rowDelete" caption={labels.captionRowDelete} />
             </ToolbarButton>
             <ToolbarButton
               title={labels.deleteTable}
               disabled={!state.isTable}
               onClick={() => editor.chain().focus().deleteTable().run()}
             >
-              <span className="rich-text-editor__icon-table-delete" aria-hidden="true" />
+              <Captioned icon="tableDelete" caption={labels.captionTableDelete} />
             </ToolbarButton>
           </div>
 
